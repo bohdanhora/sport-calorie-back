@@ -1,0 +1,343 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BiologicalSex {
+  MALE
+  FEMALE
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  HIGH
+  VERY_HIGH
+}
+
+enum FitnessGoal {
+  LOSE_WEIGHT
+  MAINTAIN_WEIGHT
+  GAIN_WEIGHT
+}
+
+enum UnitSystem {
+  METRIC
+  IMPERIAL
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum FoodSource {
+  MANUAL
+  EXTERNAL
+}
+
+enum FoodUnit {
+  GRAM
+  MILLILITER
+  PIECE
+  SERVING
+}
+
+enum ActivityCategory {
+  WALKING
+  CARDIO
+  STRENGTH
+  MOBILITY
+  OTHER
+}
+
+enum Intensity {
+  LOW
+  MODERATE
+  HIGH
+}
+
+enum EnergySource {
+  ESTIMATED
+  MANUAL
+}
+
+enum CalorieTargetSource {
+  RECOMMENDED
+  MANUAL
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  profile           UserProfile?
+  refreshTokens     RefreshToken[]
+  foods             Food[]
+  foodUsages        FoodUsage[]
+  foodEntries       FoodEntry[]
+  activityTypes     ActivityType[]
+  activityEntries   ActivityEntry[]
+  weightEntries     WeightEntry[]
+  dailyGoals        DailyGoal[]
+  nutritionProvider NutritionProvider?
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model UserProfile {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  displayName    String?
+  sex            BiologicalSex?
+  birthDate      DateTime?      @db.Date
+  heightCm       Float?
+  targetWeightKg Float?
+  activityLevel  ActivityLevel  @default(LIGHT)
+  goal           FitnessGoal    @default(MAINTAIN_WEIGHT)
+  unitSystem     UnitSystem     @default(METRIC)
+
+  timezone String @default("UTC")
+  locale   String @default("en")
+
+  manualCalorieTargetKcal Float?
+  manualProteinTargetG    Float?
+  manualCarbsTargetG      Float?
+  manualFatTargetG        Float?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model NutritionProvider {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+
+  baseUrl   String
+  modelName String
+
+  apiKeyCipher String
+  apiKeyIv     String
+  apiKeyTag    String
+  apiKeyHint   String
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("nutrition_providers")
+}
+
+model DailyGoal {
+  id     String   @id @default(uuid()) @db.Uuid
+  userId String   @db.Uuid
+  date   DateTime @db.Date
+
+  calorieTargetKcal Float
+  proteinTargetG    Float?
+  carbsTargetG      Float?
+  fatTargetG        Float?
+  source            CalorieTargetSource @default(MANUAL)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("daily_goals")
+}
+
+model Food {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String? @db.Uuid
+
+  name  String
+  brand String?
+
+  servingSize Float
+  servingUnit FoodUnit @default(GRAM)
+
+  energyKcal Float
+  proteinG   Float?
+  carbsG     Float?
+  fatG       Float?
+
+  source FoodSource @default(MANUAL)
+
+  externalSource String?
+  externalId     String?
+
+  archivedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  user    User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries FoodEntry[]
+  usages  FoodUsage[]
+
+  @@index([userId, name])
+  @@index([externalSource, externalId])
+  @@map("foods")
+}
+
+model FoodUsage {
+  userId     String   @db.Uuid
+  foodId     String   @db.Uuid
+  usageCount Int      @default(0)
+  lastUsedAt DateTime @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food Food @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@id([userId, foodId])
+  @@index([userId, lastUsedAt(sort: Desc)])
+  @@map("food_usages")
+}
+
+model FoodEntry {
+  id     String  @id @default(uuid()) @db.Uuid
+  userId String  @db.Uuid
+  foodId String? @db.Uuid
+
+  name   String
+  meal   MealType
+  amount Float
+  unit   FoodUnit @default(GRAM)
+
+  energyKcal Float
+  proteinG   Float?
+  carbsG     Float?
+  fatG       Float?
+  notes      String?
+
+  consumedAt DateTime @db.Timestamptz(3)
+  localDate  DateTime @db.Date
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  food Food? @relation(fields: [foodId], references: [id], onDelete: SetNull)
+
+  @@index([userId, localDate])
+  @@index([userId, localDate, meal])
+  @@map("food_entries")
+}
+
+model ActivityType {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String? @db.Uuid
+
+  slug     String
+  name     String
+  category ActivityCategory
+
+  metModerate Float
+
+  tracksDuration  Boolean @default(true)
+  tracksDistance  Boolean @default(false)
+  tracksIncline   Boolean @default(false)
+  tracksReps      Boolean @default(false)
+  tracksSets      Boolean @default(false)
+  tracksIntensity Boolean @default(true)
+
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user    User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries ActivityEntry[]
+
+  @@unique([userId, slug])
+  @@index([category, sortOrder])
+  @@map("activity_types")
+}
+
+model ActivityEntry {
+  id             String @id @default(uuid()) @db.Uuid
+  userId         String @db.Uuid
+  activityTypeId String @db.Uuid
+
+  title String?
+
+  durationSec Int?
+  distanceM   Float?
+
+  avgSpeedKmh    Float?
+  inclinePercent Float?
+  sets           Int?
+  reps           Int?
+  intensity      Intensity?
+
+  energyKcal   Float
+  energySource EnergySource @default(ESTIMATED)
+  notes        String?
+
+  performedAt DateTime @db.Timestamptz(3)
+  localDate   DateTime @db.Date
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityType ActivityType @relation(fields: [activityTypeId], references: [id], onDelete: Restrict)
+
+  @@index([userId, localDate])
+  @@index([userId, activityTypeId, localDate])
+  @@map("activity_entries")
+}
+
+model WeightEntry {
+  id     String   @id @default(uuid()) @db.Uuid
+  userId String   @db.Uuid
+  date   DateTime @db.Date
+
+  weightKg Float
+  note     String?
+
+  recordedAt DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date(sort: Desc)])
+  @@map("weight_entries")
+}
