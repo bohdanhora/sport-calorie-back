@@ -1,0 +1,3 @@
+export const FALLBACK_BODY_WEIGHT_KG = 70;
+
+export const DEFAULT_CALORIE_TARGET_KCAL = 2000;
