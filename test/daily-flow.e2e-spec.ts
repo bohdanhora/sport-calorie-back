@@ -20,7 +20,9 @@ describe('Daily tracking flow', () => {
   let today: string;
 
   const authorised = (): request.Test =>
-    request(app.getHttpServer()).get('/api/dashboard').set('Authorization', `Bearer ${accessToken}`);
+    request(app.getHttpServer())
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${accessToken}`);
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();

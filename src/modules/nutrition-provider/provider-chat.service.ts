@@ -8,8 +8,7 @@ const BAD_REQUEST = 400;
 const ERROR_SNIPPET_LENGTH = 500;
 
 export type MessageContent =
-  | string
-  | ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[];
+  string | ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[];
 
 export interface ChatMessage {
   role: string;

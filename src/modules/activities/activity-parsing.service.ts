@@ -87,7 +87,8 @@ export class ActivityParsingService {
       sets: type.tracksSets ? asPositiveInteger(answer.sets) : null,
       reps: type.tracksReps ? asPositiveInteger(answer.reps) : null,
       intensity:
-        type.tracksIntensity && typeof answer.intensity === 'string' &&
+        type.tracksIntensity &&
+        typeof answer.intensity === 'string' &&
         INTENSITIES.has(answer.intensity)
           ? (answer.intensity as Intensity)
           : null,
