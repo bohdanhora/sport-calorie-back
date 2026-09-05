@@ -16,6 +16,11 @@ export interface SecurityConfig {
   encryptionKey: Buffer;
 }
 
+export interface GoogleConfig {
+  clientId: string;
+  isEnabled: boolean;
+}
+
 export interface JwtConfig {
   accessSecret: string;
   refreshSecret: string;
@@ -42,6 +47,12 @@ export const appConfig = registerAs<AppConfig>('app', () => {
 export const securityConfig = registerAs<SecurityConfig>('security', () => ({
   encryptionKey: deriveEncryptionKey(process.env.ENCRYPTION_KEY ?? ''),
 }));
+
+export const googleConfig = registerAs<GoogleConfig>('google', () => {
+  const clientId = process.env.GOOGLE_CLIENT_ID ?? '';
+
+  return { clientId, isEnabled: clientId.length > 0 };
+});
 
 export const jwtConfig = registerAs<JwtConfig>('jwt', () => ({
   accessSecret: process.env.JWT_ACCESS_SECRET ?? '',

@@ -55,6 +55,14 @@ export class ProfileDto {
   @ApiPropertyOptional({ type: Number, nullable: true })
   manualFatTargetG!: number | null;
 
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '2026-09-05T08:12:00.000Z',
+    description: 'When the account finished the onboarding wizard; null means it has not',
+  })
+  onboardingCompletedAt!: string | null;
+
   @ApiProperty({ type: EnergyProfileDto })
   energy!: EnergyProfileDto;
 }

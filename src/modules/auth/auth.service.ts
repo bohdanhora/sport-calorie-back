@@ -3,17 +3,28 @@ import { compare, hash } from 'bcrypt';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthResponseDto } from './dto/auth-response.dto';
+import type { GoogleSignInDto } from './dto/google-sign-in.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
+import { GoogleIdentityService, type GoogleIdentity } from './google-identity.service';
 import { TokenService } from './token.service';
 
 const PASSWORD_SALT_ROUNDS = 12;
 const DEFAULT_TIMEZONE = 'UTC';
 const DEFAULT_LOCALE = 'en';
 
+const PROFILE_SESSION = { displayName: true, timezone: true, locale: true } as const;
+
 export interface AuthResult {
   response: AuthResponseDto;
   refreshToken: string;
+}
+
+interface GoogleUser {
+  id: string;
+  email: string;
+  googleId: string | null;
+  profile: { displayName: string | null; timezone: string; locale: string } | null;
 }
 
 @Injectable()
@@ -21,6 +32,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokenService: TokenService,
+    private readonly googleIdentity: GoogleIdentityService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
@@ -71,11 +83,26 @@ export class AuthService {
       },
     });
 
-    const passwordMatches = user ? await compare(dto.password, user.passwordHash) : false;
+    const passwordMatches = user?.passwordHash
+      ? await compare(dto.password, user.passwordHash)
+      : false;
 
     if (!user || !passwordMatches) {
       throw new UnauthorizedException('Incorrect email or password');
     }
+
+    return this.buildAuthResult({
+      id: user.id,
+      email: user.email,
+      displayName: user.profile?.displayName ?? null,
+      timezone: user.profile?.timezone ?? DEFAULT_TIMEZONE,
+      locale: user.profile?.locale ?? DEFAULT_LOCALE,
+    });
+  }
+
+  async signInWithGoogle(dto: GoogleSignInDto): Promise<AuthResult> {
+    const identity = await this.googleIdentity.verify(dto.idToken);
+    const user = await this.resolveGoogleUser(identity, dto);
 
     return this.buildAuthResult({
       id: user.id,
@@ -125,6 +152,50 @@ export class AuthService {
     if (refreshToken) {
       await this.tokenService.revokeRefreshToken(refreshToken);
     }
+  }
+
+  private async resolveGoogleUser(
+    identity: GoogleIdentity,
+    dto: GoogleSignInDto,
+  ): Promise<GoogleUser> {
+    const existing = await this.prisma.user.findFirst({
+      where: { OR: [{ googleId: identity.googleId }, { email: identity.email }] },
+      select: { id: true, email: true, googleId: true, profile: { select: PROFILE_SESSION } },
+    });
+
+    // Google has verified the address, so an account created with a password can
+    // be linked to it rather than turned into a duplicate.
+    if (existing) {
+      if (existing.googleId === identity.googleId && existing.profile?.displayName) {
+        return existing;
+      }
+
+      return this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          googleId: identity.googleId,
+          profile: {
+            update: { displayName: existing.profile?.displayName ?? identity.displayName },
+          },
+        },
+        select: { id: true, email: true, googleId: true, profile: { select: PROFILE_SESSION } },
+      });
+    }
+
+    return this.prisma.user.create({
+      data: {
+        email: identity.email,
+        googleId: identity.googleId,
+        profile: {
+          create: {
+            displayName: identity.displayName,
+            timezone: dto.timezone ?? DEFAULT_TIMEZONE,
+            locale: dto.locale ?? DEFAULT_LOCALE,
+          },
+        },
+      },
+      select: { id: true, email: true, googleId: true, profile: { select: PROFILE_SESSION } },
+    });
   }
 
   private async buildAuthResult(user: {

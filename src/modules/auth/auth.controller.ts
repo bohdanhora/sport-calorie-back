@@ -7,6 +7,7 @@ import { appConfig, type AppConfig } from '../../config/app.config';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthService, type AuthResult } from './auth.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { GoogleSignInDto } from './dto/google-sign-in.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { TokenService } from './token.service';
@@ -48,6 +49,19 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponseDto> {
     return this.respondWithSession(await this.authService.login(dto), response);
+  }
+
+  @Public()
+  @Throttle(CREDENTIAL_THROTTLE)
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sign in with a Google ID token' })
+  @ApiOkResponse({ type: AuthResponseDto })
+  async google(
+    @Body() dto: GoogleSignInDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AuthResponseDto> {
+    return this.respondWithSession(await this.authService.signInWithGoogle(dto), response);
   }
 
   @Public()

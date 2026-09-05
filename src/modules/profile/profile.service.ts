@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma, UserProfile } from '@prisma/client';
 
-import { parseLocalDate, toLocalDateString } from '../../common/date/local-date';
+import { parseLocalDate, toLocalDateString, todayInTimeZone } from '../../common/date/local-date';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TargetsService } from '../targets/targets.service';
 import { UserContextService } from '../user-context/user-context.service';
+import { WeightService } from '../weight/weight.service';
+import type { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import type { ProfileDto } from './dto/profile-response.dto';
 import type { UpdateCalorieTargetDto } from './dto/update-calorie-target.dto';
 import type { UpdateProfileDto } from './dto/update-profile.dto';
@@ -15,6 +17,7 @@ export class ProfileService {
     private readonly prisma: PrismaService,
     private readonly userContext: UserContextService,
     private readonly targetsService: TargetsService,
+    private readonly weightService: WeightService,
   ) {}
 
   async get(userId: string): Promise<ProfileDto> {
@@ -70,6 +73,35 @@ export class ProfileService {
     return this.get(userId);
   }
 
+  async completeOnboarding(userId: string, dto: CompleteOnboardingDto): Promise<ProfileDto> {
+    const profile = await this.prisma.userProfile.update({
+      where: { userId },
+      data: {
+        displayName: dto.displayName?.trim() || undefined,
+        sex: dto.sex,
+        birthDate: parseLocalDate(dto.birthDate),
+        heightCm: dto.heightCm,
+        targetWeightKg: dto.targetWeightKg ?? null,
+        activityLevel: dto.activityLevel,
+        goal: dto.goal,
+        unitSystem: dto.unitSystem ?? undefined,
+        timezone: dto.timezone ?? undefined,
+        locale: dto.locale ?? undefined,
+        manualCalorieTargetKcal: dto.calorieTargetKcal ?? null,
+        onboardingCompletedAt: new Date(),
+      },
+      select: { timezone: true },
+    });
+
+    // The starting weight is what every trend and the energy estimate build on,
+    // so it is stored as a normal entry for today rather than on the profile.
+    await this.weightService.upsert(userId, todayInTimeZone(profile.timezone), {
+      weightKg: dto.currentWeightKg,
+    });
+
+    return this.get(userId);
+  }
+
   async updateCalorieTarget(userId: string, dto: UpdateCalorieTargetDto): Promise<ProfileDto> {
     const data: Prisma.UserProfileUpdateInput = {};
 
@@ -110,6 +142,7 @@ export class ProfileService {
       manualProteinTargetG: profile.manualProteinTargetG,
       manualCarbsTargetG: profile.manualCarbsTargetG,
       manualFatTargetG: profile.manualFatTargetG,
+      onboardingCompletedAt: profile.onboardingCompletedAt?.toISOString() ?? null,
       energy: this.targetsService.calculateEnergyProfile(profile, currentWeightKg),
     };
   }

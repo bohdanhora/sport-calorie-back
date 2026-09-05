@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Patch, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import {
   CurrentUser,
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
+import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { ProfileDto } from './dto/profile-response.dto';
 import { UpdateCalorieTargetDto } from './dto/update-calorie-target.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -31,6 +32,21 @@ export class ProfileController {
     @Body() dto: UpdateProfileDto,
   ): Promise<ProfileDto> {
     return this.profileService.update(user.id, dto);
+  }
+
+  @Post('onboarding')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Save the answers from the first-run wizard',
+    description:
+      'Writes body data, preferences and the starting weight in one call, and marks onboarding as done.',
+  })
+  @ApiOkResponse({ type: ProfileDto })
+  completeOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CompleteOnboardingDto,
+  ): Promise<ProfileDto> {
+    return this.profileService.completeOnboarding(user.id, dto);
   }
 
   @Put('calorie-target')

@@ -5,7 +5,13 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { appConfig, jwtConfig, securityConfig, type AppConfig } from './config/app.config';
+import {
+  appConfig,
+  googleConfig,
+  jwtConfig,
+  securityConfig,
+  type AppConfig,
+} from './config/app.config';
 import { validateEnvironment } from './config/environment';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -28,7 +34,7 @@ const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
       isGlobal: true,
       cache: true,
       validate: validateEnvironment,
-      load: [appConfig, jwtConfig, securityConfig],
+      load: [appConfig, jwtConfig, securityConfig, googleConfig],
     }),
     LoggerModule.forRootAsync({
       inject: [ConfigService],

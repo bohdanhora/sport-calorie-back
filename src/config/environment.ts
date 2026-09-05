@@ -55,6 +55,10 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
+  GOOGLE_CLIENT_ID?: string;
+
+  @IsString()
+  @IsOptional()
   CORS_ORIGINS = 'http://localhost:3000';
 
   @IsString()
