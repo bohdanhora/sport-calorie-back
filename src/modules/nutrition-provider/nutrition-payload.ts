@@ -23,7 +23,8 @@ const MAX_NAME_LENGTH = 120;
 const MAX_AMOUNT = 10_000;
 const MAX_ENERGY_KCAL = 10_000;
 const MAX_MACRO_GRAMS = 1000;
-const FENCE_PATTERN = /^```(?:json)?\s*([\s\S]*?)\s*```$/;
+const THINKING_PATTERN = /<think>[\s\S]*?<\/think>/gi;
+const FENCE_PATTERN = /```(?:json)?\s*([\s\S]*?)```/i;
 
 const readNumber = (value: unknown): number | null => {
   const parsed = typeof value === 'string' ? Number.parseFloat(value) : value;
@@ -47,18 +48,65 @@ const readUnit = (value: unknown): FoodUnit => {
   return candidate in FoodUnit ? (candidate as FoodUnit) : FoodUnit.GRAM;
 };
 
-export const stripCodeFence = (raw: string): string => {
-  const trimmed = raw.trim();
-  const fenced = FENCE_PATTERN.exec(trimmed);
+/** The first balanced `{...}` in the text, string literals respected. */
+const sliceFirstObject = (text: string): string | null => {
+  const start = text.indexOf('{');
 
-  return fenced ? fenced[1] : trimmed;
+  if (start < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (escaped) {
+      escaped = false;
+    } else if (inString) {
+      if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+    } else if (character === '"') {
+      inString = true;
+    } else if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Digs the JSON object out of whatever the model wrapped it in. Asking for JSON
+ * mode covers this, but not every provider accepts the flag alongside an image,
+ * and without it a reasoning model opens with a <think> block, a chatty one adds
+ * a sentence either side, and plenty fence the object in markdown. Any of those
+ * would make JSON.parse throw on an answer that is perfectly usable.
+ */
+export const extractJsonObject = (raw: string): string => {
+  const spoken = raw.replace(THINKING_PATTERN, '');
+  const fenced = FENCE_PATTERN.exec(spoken);
+  const text = (fenced ? fenced[1] : spoken).trim();
+
+  return sliceFirstObject(text) ?? text;
 };
 
 export const parseNutritionPayload = (raw: string): ParsedNutrition => {
   let payload: unknown;
 
   try {
-    payload = JSON.parse(stripCodeFence(raw));
+    payload = JSON.parse(extractJsonObject(raw));
   } catch {
     throw new UnusableProviderAnswerError('The answer was not valid JSON');
   }

@@ -1,4 +1,4 @@
-import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { FoodSource } from '@prisma/client';
 
@@ -17,6 +17,7 @@ import {
 export const MODEL_FOOD_SOURCE = 'model';
 export const PHOTO_FOOD_SOURCE = 'model-photo';
 
+const ANSWER_SNIPPET_LENGTH = 500;
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
@@ -51,6 +52,8 @@ const buildSystemPrompt = (language: string): string =>
 
 @Injectable()
 export class FoodParsingService {
+  private readonly logger = new Logger(FoodParsingService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerService: NutritionProviderService,
@@ -175,17 +178,7 @@ export class FoodParsingService {
       model,
     );
 
-    let nutrition;
-
-    try {
-      nutrition = parseNutritionPayload(content);
-    } catch (error) {
-      if (error instanceof UnusableProviderAnswerError) {
-        throw new BadGatewayException(`The provider returned an unusable answer: ${error.message}`);
-      }
-
-      throw error;
-    }
+    const nutrition = this.readAnswer(content);
 
     const food = await this.prisma.food.create({
       data: {
@@ -230,15 +223,27 @@ export class FoodParsingService {
       { role: 'user', content: text },
     ]);
 
+    return this.readAnswer(content);
+  }
+
+  /**
+   * The answer, or a 502 the client can show. The raw text goes to the log on
+   * the way out: when a model wanders off the JSON it was asked for, what it
+   * said instead is the only thing that explains the failure.
+   */
+  private readAnswer(content: string): ParsedNutrition {
     try {
       return parseNutritionPayload(content);
     } catch (error) {
       if (error instanceof UnusableProviderAnswerError) {
+        this.logger.warn(
+          `${error.message}. The provider answered: ${content.trim().slice(0, ANSWER_SNIPPET_LENGTH)}`,
+        );
+
         throw new BadGatewayException(`The provider returned an unusable answer: ${error.message}`);
       }
 
       throw error;
     }
   }
-
 }

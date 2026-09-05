@@ -5,6 +5,7 @@ import type { ProviderCredentials } from './nutrition-provider.service';
 const REQUEST_TIMEOUT_MS = 25_000;
 const UNAUTHORISED = 401;
 const BAD_REQUEST = 400;
+const ERROR_SNIPPET_LENGTH = 500;
 
 export type MessageContent =
   | string
@@ -37,6 +38,7 @@ export class ProviderChatService {
     let response = await this.send(credentials, { messages, jsonMode: true, model });
 
     if (response.status === BAD_REQUEST) {
+      this.logger.warn(`Provider refused JSON mode: ${await this.reason(response)}`);
       response = await this.send(credentials, { messages, jsonMode: false, model });
     }
 
@@ -45,7 +47,9 @@ export class ProviderChatService {
     }
 
     if (!response.ok) {
-      this.logger.warn(`Nutrition provider responded with ${response.status}`);
+      this.logger.warn(
+        `Nutrition provider responded with ${response.status}: ${await this.reason(response)}`,
+      );
       throw new BadGatewayException('The provider could not answer right now');
     }
 
@@ -57,6 +61,19 @@ export class ProviderChatService {
     }
 
     return content;
+  }
+
+  /**
+   * What the provider said went wrong. Only ever reaches the log: the body is
+   * the provider's prose, not something to hand a client, but without it a
+   * refusal is a bare status code and nobody can tell why the photo failed.
+   */
+  private async reason(response: Response): Promise<string> {
+    try {
+      return (await response.text()).trim().slice(0, ERROR_SNIPPET_LENGTH) || '(empty body)';
+    } catch {
+      return '(unreadable body)';
+    }
   }
 
   private async send(

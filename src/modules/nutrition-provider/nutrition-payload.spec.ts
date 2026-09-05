@@ -2,9 +2,9 @@ import { FoodUnit } from '@prisma/client';
 
 import {
   UnusableProviderAnswerError,
+  extractJsonObject,
   normaliseQuery,
   parseNutritionPayload,
-  stripCodeFence,
 } from './nutrition-payload';
 
 describe('parseNutritionPayload', () => {
@@ -40,6 +40,29 @@ describe('parseNutritionPayload', () => {
     const raw = '```json\n{"name":"Egg","amount":1,"unit":"PIECE","energyKcal":78}\n```';
 
     expect(parseNutritionPayload(raw)).toMatchObject({ name: 'Egg', unit: FoodUnit.PIECE });
+  });
+
+  it('skips the reasoning a thinking model opens with', () => {
+    const raw =
+      '<think>The plate holds an egg, so about 78 kcal.</think>\n' +
+      '{"name":"Egg","amount":1,"unit":"PIECE","energyKcal":78}';
+
+    expect(parseNutritionPayload(raw)).toMatchObject({ name: 'Egg', energyKcal: 78 });
+  });
+
+  it('picks the object out of a chatty answer', () => {
+    const raw =
+      'Here is my estimate for the photo:\n' +
+      '{"name":"Egg","amount":1,"unit":"PIECE","energyKcal":78}\n' +
+      'Let me know if the portion looks different.';
+
+    expect(parseNutritionPayload(raw)).toMatchObject({ name: 'Egg', energyKcal: 78 });
+  });
+
+  it('keeps a brace that only appears inside a string', () => {
+    const raw = '{"name":"Rice {special}","amount":150,"energyKcal":195}';
+
+    expect(parseNutritionPayload(raw)).toMatchObject({ name: 'Rice {special}' });
   });
 
   it('falls back to grams for an unknown unit', () => {
@@ -93,9 +116,17 @@ describe('parseNutritionPayload', () => {
   });
 });
 
-describe('stripCodeFence', () => {
+describe('extractJsonObject', () => {
   it('leaves plain JSON untouched', () => {
-    expect(stripCodeFence('  {"a":1}  ')).toBe('{"a":1}');
+    expect(extractJsonObject('  {"a":1}  ')).toBe('{"a":1}');
+  });
+
+  it('stops at the end of the first object', () => {
+    expect(extractJsonObject('note {"a":{"b":1}} and {"c":2}')).toBe('{"a":{"b":1}}');
+  });
+
+  it('gives back what it got when there is no object at all', () => {
+    expect(extractJsonObject('roughly 300 calories')).toBe('roughly 300 calories');
   });
 });
 
