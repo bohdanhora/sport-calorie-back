@@ -35,11 +35,16 @@ export class SaveNutritionProviderDto {
   @IsBoolean()
   visionOverride?: boolean;
 
-  @ApiProperty({ example: 'sk-proj-...', description: 'Stored encrypted and never returned' })
+  @ApiPropertyOptional({
+    example: 'sk-proj-...',
+    description:
+      'Stored encrypted and never returned. Omit it to keep the key already saved, which is what changing a model alone does.',
+  })
+  @IsOptional()
   @IsString()
   @MinLength(8)
   @MaxLength(400)
-  apiKey!: string;
+  apiKey?: string;
 }
 
 export class NutritionProviderDto {

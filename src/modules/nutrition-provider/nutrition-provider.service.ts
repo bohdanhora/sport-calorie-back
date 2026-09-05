@@ -1,4 +1,10 @@
-import { BadGatewayException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 
 import { securityConfig, type SecurityConfig } from '../../config/app.config';
 import { decryptSecret, encryptSecret, maskSecret } from '../../common/crypto/secret-cipher';
@@ -66,25 +72,45 @@ export class NutritionProviderService {
   }
 
   async save(userId: string, dto: SaveNutritionProviderDto): Promise<NutritionProviderDto> {
-    const apiKey = dto.apiKey.trim();
-    const encrypted = encryptSecret(apiKey, this.config.encryptionKey);
+    const apiKey = dto.apiKey?.trim();
+    const existing = await this.prisma.nutritionProvider.findUnique({ where: { userId } });
 
-    const data = {
+    if (!apiKey && !existing) {
+      throw new BadRequestException('An API key is needed the first time');
+    }
+
+    const settings = {
       baseUrl: dto.baseUrl.trim().replace(/\/+$/, ''),
       modelName: dto.modelName.trim(),
       visionModelName: dto.visionModelName?.trim() || null,
       visionOverride: dto.visionOverride ?? false,
-      apiKeyCipher: encrypted.cipher,
-      apiKeyIv: encrypted.iv,
-      apiKeyTag: encrypted.tag,
-      apiKeyHint: maskSecret(apiKey),
     };
 
-    await this.prisma.nutritionProvider.upsert({
-      where: { userId },
-      create: { userId, ...data },
-      update: data,
-    });
+    // Without a new key the stored one stays as it is, so changing a model does
+    // not mean typing the key out again.
+    const secret = apiKey
+      ? (() => {
+          const encrypted = encryptSecret(apiKey, this.config.encryptionKey);
+
+          return {
+            apiKeyCipher: encrypted.cipher,
+            apiKeyIv: encrypted.iv,
+            apiKeyTag: encrypted.tag,
+            apiKeyHint: maskSecret(apiKey),
+          };
+        })()
+      : null;
+
+    if (existing) {
+      await this.prisma.nutritionProvider.update({
+        where: { userId },
+        data: { ...settings, ...(secret ?? {}) },
+      });
+    } else {
+      await this.prisma.nutritionProvider.create({
+        data: { userId, ...settings, ...secret! },
+      });
+    }
 
     return this.get(userId);
   }
