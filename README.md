@@ -24,6 +24,8 @@ PostgreSQL provides persistence through Prisma with SQL migrations. Every formul
 ## Core capabilities
 
 - **Email and password authentication** - registration, login, rotating refresh tokens in an httpOnly cookie, logout, and per-endpoint rate limiting.
+- **Sign in with Google** - a Google ID token is verified server side and exchanged for the same session, linked to an existing account when Google has verified the same address.
+- **First-run onboarding** - one call stores body data, preferences and the starting weight, and records that the account has answered the wizard.
 - **Body profile and preferences** - sex, birth date, height, target weight, activity level, goal, unit system, timezone, and interface language.
 - **Calorie targets** - estimated BMR and TDEE, a recommended target derived from the goal, an explicit manual override that the system never changes, and per-day overrides.
 - **Food catalog and diary** - reusable foods with any serving unit, a shared seeded catalog, per-user recently used foods, and diary entries that snapshot their nutrition on write.
@@ -143,8 +145,8 @@ Eleven tables, all with UUID primary keys, `createdAt` and `updatedAt`, foreign 
 
 | Table | Purpose |
 | --- | --- |
-| `users`, `refresh_tokens` | Identity and session rotation |
-| `user_profiles` | Body data, preferences, timezone, language, manual targets |
+| `users`, `refresh_tokens` | Identity and session rotation. A user has a password hash, a Google id, or both |
+| `user_profiles` | Body data, preferences, timezone, language, manual targets, onboarding stamp |
 | `daily_goals` | Per-day calorie and macro overrides |
 | `foods`, `food_usages` | Reusable food definitions and per-user recency |
 | `food_entries` | The diary, with nutrition snapshotted on write |
@@ -244,7 +246,8 @@ Re-running the seed replaces the demo account and leaves real accounts untouched
 | `NODE_ENV` | `development` | Enables production cookie and logging behaviour. |
 | `PORT` | `4000` | HTTP port. |
 | `DATABASE_URL` | - | PostgreSQL connection string. Required. |
-| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed origins. |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated list of allowed origins. Add `http://localhost:3100` for the frontend e2e run. |
+| `GOOGLE_CLIENT_ID` | - | OAuth 2.0 Web client ID. Empty turns `POST /auth/google` into `503` and hides the button in the frontend. |
 | `LOG_LEVEL` | `info` | pino log level. |
 
 ### Security
@@ -295,14 +298,16 @@ Authorization: Bearer <accessToken>
 
 Only the SHA-256 hash of a refresh token is stored. Refreshing revokes the old token and issues a new one, and logout revokes it. Passwords are hashed with bcrypt at 12 rounds.
 
+`POST /auth/google` takes the ID token from Google Identity Services, verifies its signature and audience against `GOOGLE_CLIENT_ID`, and answers with exactly the same session payload. A token whose email Google has not verified is rejected, because an unverified address could belong to somebody else. A verified one matching an existing account links the two rather than creating a duplicate, so the same person can sign in either way; an account created through Google has no password until one is set.
+
 ## API overview
 
 Base path `/api`. Every route requires a Bearer token except registration, login, refresh, logout, and health.
 
 | Area | Routes |
 | --- | --- |
-| Session | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout` |
-| Profile | `GET /profile`, `PATCH /profile`, `PUT /profile/calorie-target` |
+| Session | `POST /auth/register`, `POST /auth/login`, `POST /auth/google`, `POST /auth/refresh`, `POST /auth/logout` |
+| Profile | `GET /profile`, `PATCH /profile`, `POST /profile/onboarding`, `PUT /profile/calorie-target` |
 | Targets | `GET /targets`, `GET /targets/energy`, `PUT /targets/:date`, `DELETE /targets/:date` |
 | Foods | `GET /foods`, `GET /foods/recent`, `POST /foods`, `PATCH /foods/:id`, `DELETE /foods/:id` |
 | Diary | `GET /food-entries`, `POST /food-entries`, `PATCH /food-entries/:id`, `DELETE /food-entries/:id` |
@@ -387,7 +392,7 @@ The API image is a multi-stage build that runs `prisma migrate deploy` on start,
 
 The unit suite covers the places where a mistake would be invisible and wrong: BMR and TDEE, the calorie target and macro split, the calorie balance, MET and ACSM energy estimation, walking metric derivation, portion scaling, nutrition totals, the weight trend, timezone handling including daylight saving boundaries, secret encryption round trips, and the parsing rules applied to provider answers.
 
-The end-to-end suite drives the real daily flow against a running database: register, set a target, record weight, log food from a saved food, log a treadmill session, override an activity's calories, check that the dashboard aggregates consistently, and confirm that a 22:30 UTC entry lands on the next local day in Kyiv.
+The end-to-end suite drives the real daily flow against a running database: register, set a target, record weight, log food from a saved food, log a treadmill session, override an activity's calories, check that the dashboard aggregates consistently, and confirm that a 22:30 UTC entry lands on the next local day in Kyiv. A second suite covers the first run: a new account reports itself as not onboarded, one call stores the answers, the starting weight and the recommended target, the day picks that target up, answers the metabolic formula cannot use are rejected, and the Google endpoint refuses to pretend it works while no client id is configured.
 
 ```bash
 npm test
