@@ -274,7 +274,7 @@ The application refuses to start if a required variable is missing or malformed.
 
 ## Authentication contract
 
-Registration and login return a short-lived access token in the response body and set a rotating refresh token as an httpOnly cookie.
+Registration and login return a short-lived access token in the response body and set a rotating refresh token as an httpOnly cookie. In production that cookie is `Secure` and `SameSite=None`, because the frontend and the API are normally served from different sites and a stricter policy would keep the browser from sending it back to `/auth/refresh`. In development it is `SameSite=Lax` over plain HTTP.
 
 ```json
 {
@@ -407,7 +407,7 @@ The end-to-end suite registers a throwaway account against `DATABASE_URL` and de
 - Use strong, environment-specific values for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `ENCRYPTION_KEY`, and never reuse them across environments.
 - Login and registration are limited to 10 requests per minute per client, token refresh to 60 because a page load performs one, and everything else to 240. Review these against real traffic.
 - Provider API keys are encrypted at rest and never returned by the API, but anyone holding both database access and `ENCRYPTION_KEY` can read them. Use a provider key with a spending limit.
-- Set `CORS_ORIGINS` to the deployed frontend origin and `COOKIE_DOMAIN` when the two are served from different subdomains.
+- Set `CORS_ORIGINS` to the deployed frontend origin and `COOKIE_DOMAIN` when the two are served from different subdomains. `COOKIE_DOMAIN` cannot bridge two different domains; the `SameSite=None` cookie is what carries the session across them.
 - Keep `.env` out of version control; only `.env.example` belongs in the repository.
 - Disable `SEED_DEMO_USER` outside controlled demo environments.
 

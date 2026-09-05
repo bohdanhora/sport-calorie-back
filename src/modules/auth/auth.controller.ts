@@ -107,7 +107,7 @@ export class AuthController {
   private cookieOptions(): CookieOptions {
     return {
       httpOnly: true,
-      sameSite: this.config.isProduction ? 'strict' : 'lax',
+      sameSite: this.config.isProduction ? 'none' : 'lax',
       secure: this.config.isProduction,
       domain: this.config.cookieDomain,
       path: '/',
