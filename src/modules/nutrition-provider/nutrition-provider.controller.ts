@@ -8,13 +8,17 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { FoodParsingService } from './food-parsing.service';
 import {
+  CatalogProviderDto,
   NutritionProviderCheckDto,
   NutritionProviderDto,
+  ProviderModelsDto,
   SaveNutritionProviderDto,
 } from './dto/nutrition-provider.dto';
 import { NutritionProviderService } from './nutrition-provider.service';
+import { PROVIDER_CATALOG } from './provider-catalog';
 
 const CHECK_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+const MODELS_THROTTLE = { default: { limit: 20, ttl: 60_000 } };
 
 @ApiTags('nutrition-provider')
 @ApiBearerAuth()
@@ -24,6 +28,25 @@ export class NutritionProviderController {
     private readonly providerService: NutritionProviderService,
     private readonly parsingService: FoodParsingService,
   ) {}
+
+  @Get('catalog')
+  @ApiOperation({
+    summary: 'Providers the app knows, with their base URL and where to get a key',
+    description:
+      'Static. The model list is not part of it: GET /nutrition-provider/models reads that from the provider itself.',
+  })
+  @ApiOkResponse({ type: [CatalogProviderDto] })
+  catalog(): CatalogProviderDto[] {
+    return PROVIDER_CATALOG;
+  }
+
+  @Get('models')
+  @Throttle(MODELS_THROTTLE)
+  @ApiOperation({ summary: 'Models the stored key can reach, and which of them accept images' })
+  @ApiOkResponse({ type: ProviderModelsDto })
+  models(@CurrentUser() user: AuthenticatedUser): Promise<ProviderModelsDto> {
+    return this.providerService.listModels(user.id);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Current provider configuration with a masked key' })

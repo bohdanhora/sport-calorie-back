@@ -151,6 +151,9 @@ model NutritionProvider {
   baseUrl   String
   modelName String
 
+  /// Left null when the user has not picked a model that accepts images.
+  visionModelName String?
+
   apiKeyCipher String
   apiKeyIv     String
   apiKeyTag    String

@@ -1,20 +1,34 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 
 import { securityConfig, type SecurityConfig } from '../../config/app.config';
 import { decryptSecret, encryptSecret, maskSecret } from '../../common/crypto/secret-cipher';
 import { PrismaService } from '../../prisma/prisma.service';
-import type { NutritionProviderDto, SaveNutritionProviderDto } from './dto/nutrition-provider.dto';
+import type {
+  NutritionProviderDto,
+  ProviderModelsDto,
+  SaveNutritionProviderDto,
+} from './dto/nutrition-provider.dto';
+import { looksLikeVisionModel } from './provider-catalog';
 
 export interface ProviderCredentials {
   baseUrl: string;
   modelName: string;
+  visionModelName: string | null;
   apiKey: string;
+}
+
+const MODELS_TIMEOUT_MS = 10_000;
+
+interface ModelListResponse {
+  data?: { id?: string }[];
 }
 
 const NOT_CONFIGURED: NutritionProviderDto = {
   isConfigured: false,
   baseUrl: null,
   modelName: null,
+  visionModelName: null,
+  supportsVision: false,
   apiKeyHint: null,
 };
 
@@ -36,6 +50,10 @@ export class NutritionProviderService {
       isConfigured: true,
       baseUrl: provider.baseUrl,
       modelName: provider.modelName,
+      visionModelName: provider.visionModelName,
+      supportsVision:
+        provider.visionModelName !== null &&
+        looksLikeVisionModel(provider.baseUrl, provider.visionModelName),
       apiKeyHint: provider.apiKeyHint,
     };
   }
@@ -47,6 +65,7 @@ export class NutritionProviderService {
     const data = {
       baseUrl: dto.baseUrl.trim().replace(/\/+$/, ''),
       modelName: dto.modelName.trim(),
+      visionModelName: dto.visionModelName?.trim() || null,
       apiKeyCipher: encrypted.cipher,
       apiKeyIv: encrypted.iv,
       apiKeyTag: encrypted.tag,
@@ -76,6 +95,7 @@ export class NutritionProviderService {
     return {
       baseUrl: provider.baseUrl,
       modelName: provider.modelName,
+      visionModelName: provider.visionModelName,
       apiKey: decryptSecret(
         {
           cipher: provider.apiKeyCipher,
@@ -84,6 +104,45 @@ export class NutritionProviderService {
         },
         this.config.encryptionKey,
       ),
+    };
+  }
+
+  /**
+   * Asks the provider which models the stored key can reach. No OpenAI
+   * compatible API reports modality, so the vision subset is recognised from
+   * the ids rather than read from the answer.
+   */
+  async listModels(userId: string): Promise<ProviderModelsDto> {
+    const credentials = await this.getCredentials(userId);
+
+    let response: Response;
+
+    try {
+      response = await fetch(`${credentials.baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${credentials.apiKey}` },
+        signal: AbortSignal.timeout(MODELS_TIMEOUT_MS),
+      });
+    } catch {
+      throw new BadGatewayException('The provider could not be reached');
+    }
+
+    if (response.status === 401) {
+      throw new BadGatewayException('The provider rejected the API key');
+    }
+
+    if (!response.ok) {
+      throw new BadGatewayException('The provider could not list its models');
+    }
+
+    const payload = (await response.json()) as ModelListResponse;
+    const models = (payload.data ?? [])
+      .map((model) => model.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+
+    return {
+      models,
+      visionModels: models.filter((id) => looksLikeVisionModel(credentials.baseUrl, id)),
     };
   }
 }

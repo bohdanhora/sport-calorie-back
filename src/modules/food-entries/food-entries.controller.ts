@@ -20,12 +20,16 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { DateQueryDto } from '../../common/dto/date-query.dto';
 import { FoodParsingService } from '../nutrition-provider/food-parsing.service';
-import { ParseFoodDto, ParsedFoodDto } from '../nutrition-provider/dto/parse-food.dto';
+import { ParseFoodDto, ParsedFoodDto, ScanFoodDto } from '../nutrition-provider/dto/parse-food.dto';
 import { CreateFoodEntryDto, UpdateFoodEntryDto } from './dto/food-entry-request.dto';
 import { FoodEntryDto } from './dto/food-entry-response.dto';
 import { FoodEntriesService } from './food-entries.service';
 
 const PARSE_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
+// Free provider tiers meter photos far harder than text, and each one is a
+// couple of thousand tokens; a lower ceiling keeps a stuck client from burning
+// the daily allowance in a minute.
+const SCAN_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
 @ApiTags('food-entries')
 @ApiBearerAuth()
@@ -47,6 +51,19 @@ export class FoodEntriesController {
   @ApiOkResponse({ type: ParsedFoodDto })
   parse(@CurrentUser() user: AuthenticatedUser, @Body() dto: ParseFoodDto): Promise<ParsedFoodDto> {
     return this.foodParsingService.parse(user.id, dto);
+  }
+
+  @Post('scan')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(SCAN_THROTTLE)
+  @ApiOperation({
+    summary: 'Estimate nutrition from a photograph using the configured vision model',
+    description:
+      'Returns a draft that pre-fills the entry form. Nothing is logged until the user saves it.',
+  })
+  @ApiOkResponse({ type: ParsedFoodDto })
+  scan(@CurrentUser() user: AuthenticatedUser, @Body() dto: ScanFoodDto): Promise<ParsedFoodDto> {
+    return this.foodParsingService.scan(user.id, dto);
   }
 
   @Get()

@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -12,7 +13,11 @@ const API_PREFIX = 'api';
 const DOCS_PATH = 'api/docs';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
+
+  // A downscaled photo arrives as a base64 data URL, which the 100 kB default
+  // for JSON bodies would reject long before validation ever saw it.
+  app.useBodyParser('json', { limit: '6mb' });
   const logger = app.get(Logger);
 
   app.useLogger(logger);
