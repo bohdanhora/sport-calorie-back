@@ -12,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   CurrentUser,
@@ -19,6 +20,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { DateQueryDto } from '../../common/dto/date-query.dto';
 import { ActivityEntriesService } from './activity-entries.service';
+import { ActivityParsingService } from './activity-parsing.service';
 import { ActivityTypesService } from './activity-types.service';
 import {
   CreateActivityEntryDto,
@@ -27,6 +29,10 @@ import {
 } from './dto/activity-entry-request.dto';
 import { ActivityEnergyEstimateDto, ActivityEntryDto } from './dto/activity-entry-response.dto';
 import { ActivityTypeDto } from './dto/activity-type-response.dto';
+import { ParseActivityDto, ParsedActivityDto } from './dto/parse-activity.dto';
+
+// The provider meters these; a stuck client should not eat a daily allowance.
+const PARSE_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
 
 @ApiTags('activities')
 @ApiBearerAuth()
@@ -46,7 +52,10 @@ export class ActivityTypesController {
 @ApiBearerAuth()
 @Controller('activity-entries')
 export class ActivityEntriesController {
-  constructor(private readonly activityEntries: ActivityEntriesService) {}
+  constructor(
+    private readonly activityEntries: ActivityEntriesService,
+    private readonly activityParsing: ActivityParsingService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Activities logged on a given day' })
@@ -56,6 +65,22 @@ export class ActivityEntriesController {
     @Query() query: DateQueryDto,
   ): Promise<ActivityEntryDto[]> {
     return this.activityEntries.listByDate(user.id, query.date);
+  }
+
+  @Post('parse')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(PARSE_THROTTLE)
+  @ApiOperation({
+    summary: 'Turn a described workout into form fields using the configured provider',
+    description:
+      'The provider picks the activity and the quantities; the energy is still calculated here. Nothing is logged until the user saves it.',
+  })
+  @ApiOkResponse({ type: ParsedActivityDto })
+  parse(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ParseActivityDto,
+  ): Promise<ParsedActivityDto> {
+    return this.activityParsing.parse(user.id, dto);
   }
 
   @Post('estimate')

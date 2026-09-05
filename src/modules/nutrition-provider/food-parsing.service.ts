@@ -1,10 +1,11 @@
-import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { FoodSource } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import type { ParseFoodDto, ParsedFoodDto, ScanFoodDto } from './dto/parse-food.dto';
 import { NutritionProviderService, type ProviderCredentials } from './nutrition-provider.service';
+import { ProviderChatService } from './provider-chat.service';
 import { looksLikeVisionModel } from './provider-catalog';
 import {
   UnusableProviderAnswerError,
@@ -16,9 +17,6 @@ import {
 export const MODEL_FOOD_SOURCE = 'model';
 export const PHOTO_FOOD_SOURCE = 'model-photo';
 
-const REQUEST_TIMEOUT_MS = 25_000;
-const UNAUTHORISED = 401;
-const BAD_REQUEST = 400;
 
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
@@ -51,26 +49,12 @@ const buildSystemPrompt = (language: string): string =>
     'Never add commentary, units inside numbers, or extra keys.',
   ].join(' ');
 
-type MessageContent =
-  | string
-  | ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[];
-
-interface ChatMessage {
-  role: string;
-  content: MessageContent;
-}
-
-interface ChatCompletionResponse {
-  choices?: { message?: { content?: string } }[];
-}
-
 @Injectable()
 export class FoodParsingService {
-  private readonly logger = new Logger(FoodParsingService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerService: NutritionProviderService,
+    private readonly chat: ProviderChatService,
   ) {}
 
   async parse(userId: string, dto: ParseFoodDto): Promise<ParsedFoodDto> {
@@ -176,7 +160,7 @@ export class FoodParsingService {
       };
     }
 
-    const content = await this.requestCompletion(
+    const content = await this.chat.complete(
       credentials,
       [
         { role: 'system', content: buildPhotoPrompt(language) },
@@ -241,7 +225,7 @@ export class FoodParsingService {
     text: string,
     locale: string,
   ): Promise<ParsedNutrition> {
-    const content = await this.requestCompletion(credentials, [
+    const content = await this.chat.complete(credentials, [
       { role: 'system', content: buildSystemPrompt(LANGUAGE_NAMES[locale] ?? LANGUAGE_NAMES.en) },
       { role: 'user', content: text },
     ]);
@@ -257,62 +241,4 @@ export class FoodParsingService {
     }
   }
 
-  private async requestCompletion(
-    credentials: ProviderCredentials,
-    messages: ChatMessage[],
-    model?: string,
-  ): Promise<string> {
-    let response = await this.send(credentials, { messages, jsonMode: true, model });
-
-    if (response.status === BAD_REQUEST) {
-      response = await this.send(credentials, { messages, jsonMode: false, model });
-    }
-
-    if (response.status === UNAUTHORISED) {
-      throw new BadGatewayException('The provider rejected the API key');
-    }
-
-    if (!response.ok) {
-      this.logger.warn(`Nutrition provider responded with ${response.status}`);
-      throw new BadGatewayException('The provider could not answer right now');
-    }
-
-    const payload = (await response.json()) as ChatCompletionResponse;
-    const content = payload.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new BadGatewayException('The provider returned an empty answer');
-    }
-
-    return content;
-  }
-
-  private async send(
-    credentials: ProviderCredentials,
-    options: { messages: ChatMessage[]; jsonMode: boolean; model?: string },
-  ): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
-    try {
-      return await fetch(`${credentials.baseUrl}/chat/completions`, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${credentials.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: options.model ?? credentials.modelName,
-          temperature: 0,
-          messages: options.messages,
-          ...(options.jsonMode ? { response_format: { type: 'json_object' } } : {}),
-        }),
-      });
-    } catch {
-      throw new BadGatewayException('The provider did not respond in time');
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
 }
