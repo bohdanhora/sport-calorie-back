@@ -154,6 +154,9 @@ model NutritionProvider {
   /// Left null when the user has not picked a model that accepts images.
   visionModelName String?
 
+  /// Set when the user insists a model the catalog does not recognise takes images.
+  visionOverride Boolean @default(false)
+
   apiKeyCipher String
   apiKeyIv     String
   apiKeyTag    String

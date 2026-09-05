@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
 
 export class SaveNutritionProviderDto {
   @ApiProperty({
@@ -26,6 +26,15 @@ export class SaveNutritionProviderDto {
   @MaxLength(120)
   visionModelName?: string | null;
 
+  @ApiPropertyOptional({
+    description:
+      'Set when the model is not one the catalog recognises but the user knows it takes images.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  visionOverride?: boolean;
+
   @ApiProperty({ example: 'sk-proj-...', description: 'Stored encrypted and never returned' })
   @IsString()
   @MinLength(8)
@@ -48,9 +57,15 @@ export class NutritionProviderDto {
 
   @ApiProperty({
     description:
-      'Whether the configured vision model is one the app recognises as accepting images.',
+      'Whether photos can be sent: the model is one the catalog recognises, or the user said it takes images.',
   })
   supportsVision!: boolean;
+
+  @ApiProperty({ description: 'Whether the catalog itself recognises the vision model.' })
+  visionModelKnown!: boolean;
+
+  @ApiProperty()
+  visionOverride!: boolean;
 
   @ApiPropertyOptional({
     type: String,

@@ -144,7 +144,8 @@ export class FoodParsingService {
       throw new BadRequestException('No model for photos is configured');
     }
 
-    if (!looksLikeVisionModel(credentials.baseUrl, model)) {
+    // The catalog trails new releases, so the user is allowed to insist.
+    if (!looksLikeVisionModel(credentials.baseUrl, model) && !credentials.visionOverride) {
       throw new BadRequestException(`${model} is not known to accept images`);
     }
 

@@ -14,6 +14,7 @@ export interface ProviderCredentials {
   baseUrl: string;
   modelName: string;
   visionModelName: string | null;
+  visionOverride: boolean;
   apiKey: string;
 }
 
@@ -29,6 +30,8 @@ const NOT_CONFIGURED: NutritionProviderDto = {
   modelName: null,
   visionModelName: null,
   supportsVision: false,
+  visionModelKnown: false,
+  visionOverride: false,
   apiKeyHint: null,
 };
 
@@ -46,14 +49,18 @@ export class NutritionProviderService {
       return { ...NOT_CONFIGURED };
     }
 
+    const known =
+      provider.visionModelName !== null &&
+      looksLikeVisionModel(provider.baseUrl, provider.visionModelName);
+
     return {
       isConfigured: true,
       baseUrl: provider.baseUrl,
       modelName: provider.modelName,
       visionModelName: provider.visionModelName,
-      supportsVision:
-        provider.visionModelName !== null &&
-        looksLikeVisionModel(provider.baseUrl, provider.visionModelName),
+      supportsVision: provider.visionModelName !== null && (known || provider.visionOverride),
+      visionModelKnown: known,
+      visionOverride: provider.visionOverride,
       apiKeyHint: provider.apiKeyHint,
     };
   }
@@ -66,6 +73,7 @@ export class NutritionProviderService {
       baseUrl: dto.baseUrl.trim().replace(/\/+$/, ''),
       modelName: dto.modelName.trim(),
       visionModelName: dto.visionModelName?.trim() || null,
+      visionOverride: dto.visionOverride ?? false,
       apiKeyCipher: encrypted.cipher,
       apiKeyIv: encrypted.iv,
       apiKeyTag: encrypted.tag,
@@ -96,6 +104,7 @@ export class NutritionProviderService {
       baseUrl: provider.baseUrl,
       modelName: provider.modelName,
       visionModelName: provider.visionModelName,
+      visionOverride: provider.visionOverride,
       apiKey: decryptSecret(
         {
           cipher: provider.apiKeyCipher,
