@@ -68,6 +68,12 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   LOG_LEVEL = 'info';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  AUTH_RATE_LIMIT = 10;
 }
 
 export const validateEnvironment = (raw: Record<string, unknown>): EnvironmentVariables => {

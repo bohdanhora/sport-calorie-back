@@ -260,6 +260,7 @@ Re-running the seed replaces the demo account and leaves real accounts untouched
 | `JWT_REFRESH_TTL` | `30d` | Refresh-token lifetime. |
 | `ENCRYPTION_KEY` | - | At least 32 characters. Encrypts stored provider API keys. Required. |
 | `COOKIE_DOMAIN` | - | Cookie domain in production. |
+| `AUTH_RATE_LIMIT` | `10` | Sign-ins and registrations allowed per minute per address. |
 
 ### Seed data
 
@@ -276,10 +277,13 @@ The application refuses to start if a required variable is missing or malformed.
 
 Registration and login return a short-lived access token in the response body and set a rotating refresh token as an httpOnly cookie. In production that cookie is `Secure` and `SameSite=None`, because the frontend and the API are normally served from different sites and a stricter policy would keep the browser from sending it back to `/auth/refresh`. In development it is `SameSite=Lax` over plain HTTP.
 
+`SameSite=None` is not enough for Safari, which refuses a cross-site cookie by default however it is flagged. The response therefore repeats the refresh token in its body, and `/auth/refresh` and `/auth/logout` accept it there as well: a browser that could not keep the cookie sends `{ "refreshToken": "..." }` instead. The cookie is read first wherever it arrives.
+
 ```json
 {
   "accessToken": "<signed JWT>",
   "expiresIn": 900,
+  "refreshToken": "<opaque token, also set as the sc_refresh cookie>",
   "user": {
     "id": "<uuid>",
     "email": "me@example.com",
@@ -296,7 +300,13 @@ Send the access token to protected routes with:
 Authorization: Bearer <accessToken>
 ```
 
-Only the SHA-256 hash of a refresh token is stored. Refreshing revokes the old token and issues a new one, and logout revokes it. Passwords are hashed with bcrypt at 12 rounds.
+Only the SHA-256 hash of a refresh token is stored. Refreshing retires the old token and issues a new one, and logout revokes it outright.
+
+A retired token keeps working for a minute. Rotation is what protects a stolen token, but taken literally it also ends the session whenever a client refreshes twice at once, which a page load does easily: the restore call and a request that answered `401` present the same token, and the slower one used to be told the session was gone. The grace window applies only to a token the server itself replaced, so a sign-out still ends that session immediately.
+
+Sessions are per device rather than per account. Every sign-in stores its own row in `refresh_tokens`, so a phone and a desktop hold independent sessions, neither displaces the other, and signing out on one leaves the other alone.
+
+Passwords are hashed with bcrypt at 12 rounds.
 
 `POST /auth/google` takes the ID token from Google Identity Services, verifies its signature and audience against `GOOGLE_CLIENT_ID`, and answers with exactly the same session payload. A token whose email Google has not verified is rejected, because an unverified address could belong to somebody else. A verified one matching an existing account links the two rather than creating a duplicate, so the same person can sign in either way; an account created through Google has no password until one is set.
 
@@ -392,7 +402,7 @@ The API image is a multi-stage build that runs `prisma migrate deploy` on start,
 
 The unit suite covers the places where a mistake would be invisible and wrong: BMR and TDEE, the calorie target and macro split, the calorie balance, MET and ACSM energy estimation, walking metric derivation, portion scaling, nutrition totals, the weight trend, timezone handling including daylight saving boundaries, secret encryption round trips, and the parsing rules applied to provider answers.
 
-The end-to-end suite drives the real daily flow against a running database: register, set a target, record weight, log food from a saved food, log a treadmill session, override an activity's calories, check that the dashboard aggregates consistently, and confirm that a 22:30 UTC entry lands on the next local day in Kyiv. A second suite covers the first run: a new account reports itself as not onboarded, one call stores the answers, the starting weight and the recommended target, the day picks that target up, answers the metabolic formula cannot use are rejected, and the Google endpoint refuses to pretend it works while no client id is configured.
+The end-to-end suite drives the real daily flow against a running database: register, set a target, record weight, log food from a saved food, log a treadmill session, override an activity's calories, check that the dashboard aggregates consistently, and confirm that a 22:30 UTC entry lands on the next local day in Kyiv. A third covers sessions the way a phone meets them: the token comes back in the body, a refresh works from that token alone with no cookie, the same token refreshes twice without ending the session, two devices refresh without disturbing each other, and signing out on one closes only that one. A second suite covers the first run: a new account reports itself as not onboarded, one call stores the answers, the starting weight and the recommended target, the day picks that target up, answers the metabolic formula cannot use are rejected, and the Google endpoint refuses to pretend it works while no client id is configured.
 
 ```bash
 npm test
@@ -407,7 +417,8 @@ The end-to-end suite registers a throwaway account against `DATABASE_URL` and de
 - Use strong, environment-specific values for `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `ENCRYPTION_KEY`, and never reuse them across environments.
 - Login and registration are limited to 10 requests per minute per client, token refresh to 60 because a page load performs one, and everything else to 240. Review these against real traffic.
 - Provider API keys are encrypted at rest and never returned by the API, but anyone holding both database access and `ENCRYPTION_KEY` can read them. Use a provider key with a spending limit.
-- Set `CORS_ORIGINS` to the deployed frontend origin and `COOKIE_DOMAIN` when the two are served from different subdomains. `COOKIE_DOMAIN` cannot bridge two different domains; the `SameSite=None` cookie is what carries the session across them.
+- Set `CORS_ORIGINS` to the deployed frontend origin and `COOKIE_DOMAIN` when the two are served from different subdomains. `COOKIE_DOMAIN` cannot bridge two different domains, and Safari refuses the `SameSite=None` cookie across them however it is flagged - across unrelated domains the session rides on the token the client stores instead.
+- Leave `AUTH_RATE_LIMIT` at its default in production. It is raised locally only because the test suites sign in faster than a person can.
 - Keep `.env` out of version control; only `.env.example` belongs in the repository.
 - Disable `SEED_DEMO_USER` outside controlled demo environments.
 

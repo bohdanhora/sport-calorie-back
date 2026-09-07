@@ -104,6 +104,10 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime  @db.Timestamptz(3)
   revokedAt DateTime? @db.Timestamptz(3)
+  // Set when a refresh swapped this token for a fresh one, as opposed to a
+  // sign-out revoking it. A rotated token stays usable for a short grace
+  // window so two refreshes racing on one page load cannot end the session.
+  rotatedAt DateTime? @db.Timestamptz(3)
   createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

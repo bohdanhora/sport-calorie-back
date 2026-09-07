@@ -10,11 +10,20 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { GoogleSignInDto } from './dto/google-sign-in.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SessionTokenDto } from './dto/session-token.dto';
 import { TokenService } from './token.service';
 
 export const REFRESH_COOKIE_NAME = 'sc_refresh';
 
-const CREDENTIAL_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+/**
+ * Read straight from the environment because `@Throttle` is evaluated when the
+ * class is defined, long before anything is injectable. The default is what
+ * production should run; a local machine drives these endpoints far harder than
+ * a person ever does, which is what `AUTH_RATE_LIMIT` is for.
+ */
+const CREDENTIAL_RATE_LIMIT = Number(process.env.AUTH_RATE_LIMIT ?? 10);
+
+const CREDENTIAL_THROTTLE = { default: { limit: CREDENTIAL_RATE_LIMIT, ttl: 60_000 } };
 const REFRESH_THROTTLE = { default: { limit: 60, ttl: 60_000 } };
 
 @ApiTags('auth')
@@ -71,10 +80,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange the refresh cookie for a new access token' })
   @ApiOkResponse({ type: AuthResponseDto })
   async refresh(
+    @Body() dto: SessionTokenDto,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponseDto> {
-    const token = this.readRefreshCookie(request);
+    const token = this.readRefreshToken(request, dto);
     return this.respondWithSession(await this.authService.refresh(token), response);
   }
 
@@ -83,16 +93,21 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'End the current session' })
   async logout(
+    @Body() dto: SessionTokenDto,
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
-    await this.authService.logout(this.readRefreshCookie(request));
+    await this.authService.logout(this.readRefreshToken(request, dto));
     response.clearCookie(REFRESH_COOKIE_NAME, this.cookieOptions());
   }
 
-  private readRefreshCookie(request: Request): string | undefined {
+  /**
+   * The cookie is the trustworthy copy, so it is read first; the body is the
+   * fallback for a browser that would not store a cross-site cookie at all.
+   */
+  private readRefreshToken(request: Request, dto: SessionTokenDto): string | undefined {
     const cookies = request.cookies as Record<string, string | undefined> | undefined;
-    return cookies?.[REFRESH_COOKIE_NAME];
+    return cookies?.[REFRESH_COOKIE_NAME] ?? dto.refreshToken;
   }
 
   private respondWithSession(result: AuthResult, response: Response): AuthResponseDto {
@@ -101,7 +116,7 @@ export class AuthController {
       maxAge: this.tokenService.refreshTokenTtlMs,
     });
 
-    return result.response;
+    return { ...result.response, refreshToken: result.refreshToken };
   }
 
   private cookieOptions(): CookieOptions {

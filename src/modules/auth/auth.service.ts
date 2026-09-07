@@ -16,7 +16,8 @@ const DEFAULT_LOCALE = 'en';
 const PROFILE_SESSION = { displayName: true, timezone: true, locale: true } as const;
 
 export interface AuthResult {
-  response: AuthResponseDto;
+  /** The controller adds the refresh token once it has also set the cookie. */
+  response: Omit<AuthResponseDto, 'refreshToken'>;
   refreshToken: string;
 }
 
@@ -124,7 +125,7 @@ export class AuthService {
       throw new UnauthorizedException('Session expired, sign in again');
     }
 
-    await this.tokenService.revokeRefreshToken(refreshToken);
+    await this.tokenService.rotateRefreshToken(refreshToken);
 
     const user = await this.prisma.user.findUnique({
       where: { id: active.userId },
