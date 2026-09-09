@@ -13,6 +13,16 @@ const TEXT_TIMEOUT_MS = 25_000;
  */
 const IMAGE_TIMEOUT_MS = 60_000;
 const RETRY_DELAY_MS = 1_500;
+/**
+ * A ceiling on the answer. Without one a provider assumes the model's whole
+ * output window - tens of thousands of tokens - and charges that against the
+ * per minute output budget before it writes a word, which is what returned
+ * "Request too large ... on output tokens per minute" for a request whose real
+ * answer is a hundred tokens of JSON. The room is for the <think> block the
+ * model opens with; the object itself is small.
+ */
+const TEXT_MAX_TOKENS = 1_200;
+const IMAGE_MAX_TOKENS = 1_600;
 const MS_PER_SECOND = 1_000;
 const UNAUTHORISED = 401;
 const BAD_REQUEST = 400;
@@ -28,14 +38,17 @@ export interface ChatMessage {
 }
 
 interface ChatCompletionResponse {
-  choices?: { message?: { content?: string } }[];
+  choices?: { message?: { content?: string }; finish_reason?: string }[];
 }
+
+const RAN_OUT_OF_ROOM = 'length';
 
 interface Attempt {
   messages: ChatMessage[];
   jsonMode: boolean;
   model: string;
   timeoutMs: number;
+  maxTokens: number;
   label: string;
 }
 
@@ -81,6 +94,7 @@ export class ProviderChatService {
       jsonMode: true,
       model: modelName,
       timeoutMs: photo ? IMAGE_TIMEOUT_MS : TEXT_TIMEOUT_MS,
+      maxTokens: photo ? IMAGE_MAX_TOKENS : TEXT_MAX_TOKENS,
       label: photo ? `${modelName} on a photo` : modelName,
     };
 
@@ -142,7 +156,17 @@ export class ProviderChatService {
       throw new BadGatewayException('The provider returned an answer the app could not read');
     }
 
-    const content = payload.choices?.[0]?.message?.content;
+    const choice = payload.choices?.[0];
+
+    // A budget too small for the model's thinking truncates the JSON, which
+    // reads downstream as a malformed answer rather than as the cause it is.
+    if (choice?.finish_reason === RAN_OUT_OF_ROOM) {
+      this.logger.warn(`${label}: the answer was cut off at the token ceiling`);
+
+      throw new BadGatewayException('The provider ran out of room before it finished the answer');
+    }
+
+    const content = choice?.message?.content;
 
     if (!content) {
       this.logger.warn(`${label}: the provider returned no message: ${snippet(reply.body)}`);
@@ -158,6 +182,7 @@ export class ProviderChatService {
     const body = JSON.stringify({
       model: attempt.model,
       temperature: 0,
+      max_tokens: attempt.maxTokens,
       messages: attempt.messages,
       ...(attempt.jsonMode ? { response_format: { type: 'json_object' } } : {}),
     });

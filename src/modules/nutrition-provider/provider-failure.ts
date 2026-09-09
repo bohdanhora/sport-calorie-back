@@ -10,7 +10,7 @@
 
 const TOO_MANY_REQUESTS = 429;
 const SERVER_ERROR = 500;
-const DETAIL_LENGTH = 160;
+const DETAIL_LENGTH = 320;
 const MAX_RETRY_WAIT_S = 10;
 
 interface ProviderErrorBody {
