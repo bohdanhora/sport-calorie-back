@@ -2,32 +2,26 @@ import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 import type { ProviderCredentials } from './nutrition-provider.service';
-import { aboutJsonMode, describeFailure, isRetryable, retryAfterSeconds } from './provider-failure';
+import { providerHeaders } from './provider-catalog';
+import {
+  describeFailure,
+  isRetryable,
+  refusedParameter,
+  requiresMaxTokens,
+  retryAfterSeconds,
+  type RefusedParameter,
+} from './provider-failure';
 
 const TEXT_TIMEOUT_MS = 25_000;
-/**
- * A photograph is an order of magnitude more tokens than a sentence, and the
- * model reads it before it writes a word. The budget that is generous for text
- * cuts a picture off mid-thought, which is why the camera failed while typing
- * the same meal worked.
- */
-const IMAGE_TIMEOUT_MS = 60_000;
+const IMAGE_TIMEOUT_MS = 90_000;
 const RETRY_DELAY_MS = 1_500;
-/**
- * A ceiling on the answer. Without one a provider assumes the model's whole
- * output window - tens of thousands of tokens - and charges that against the
- * per minute output budget before it writes a word, which is what returned
- * "Request too large ... on output tokens per minute" for a request whose real
- * answer is a hundred tokens of JSON. The room is for the <think> block the
- * model opens with; the object itself is small.
- */
-const TEXT_MAX_TOKENS = 1_200;
-const IMAGE_MAX_TOKENS = 1_600;
 const MS_PER_SECOND = 1_000;
 const UNAUTHORISED = 401;
 const BAD_REQUEST = 400;
 const ERROR_SNIPPET_LENGTH = 500;
 const BYTES_PER_KB = 1024;
+const PARAMETER_RETRIES = 3;
+const FALLBACK_MAX_TOKENS = 8_000;
 
 export type MessageContent =
   string | ({ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } })[];
@@ -45,15 +39,13 @@ const RAN_OUT_OF_ROOM = 'length';
 
 interface Attempt {
   messages: ChatMessage[];
-  jsonMode: boolean;
+  dropped: RefusedParameter[];
+  maxTokens: number | null;
   model: string;
   timeoutMs: number;
-  maxTokens: number;
   label: string;
 }
 
-/** An answer that arrived, whatever it says. The body is read once, here, so
- * that both the log and the client can have it. */
 interface ProviderReply {
   status: number;
   ok: boolean;
@@ -71,13 +63,6 @@ const hasImage = (messages: ChatMessage[]): boolean =>
 const snippet = (body: string): string =>
   body.trim().slice(0, ERROR_SNIPPET_LENGTH) || '(empty body)';
 
-/**
- * One place that talks to an OpenAI compatible chat endpoint. Both the food and
- * the activity parsers want the same behaviour around it: ask for JSON, retry
- * without that flag for providers that reject the parameter, give a photo the
- * time it needs, ask once more when the provider is merely busy, and turn every
- * failure into something the client can act on.
- */
 @Injectable()
 export class ProviderChatService {
   private readonly logger = new Logger(ProviderChatService.name);
@@ -89,22 +74,37 @@ export class ProviderChatService {
   ): Promise<string> {
     const modelName = model ?? credentials.modelName;
     const photo = hasImage(messages);
-    const attempt: Attempt = {
+    let attempt: Attempt = {
       messages,
-      jsonMode: true,
+      dropped: [],
+      maxTokens: null,
       model: modelName,
       timeoutMs: photo ? IMAGE_TIMEOUT_MS : TEXT_TIMEOUT_MS,
-      maxTokens: photo ? IMAGE_MAX_TOKENS : TEXT_MAX_TOKENS,
       label: photo ? `${modelName} on a photo` : modelName,
     };
 
     let reply = await this.ask(credentials, attempt);
 
-    if (reply.status === BAD_REQUEST && aboutJsonMode(reply.body)) {
-      this.logger.warn(
-        `${attempt.label}: the provider refused JSON mode, asking again without it: ${snippet(reply.body)}`,
-      );
-      reply = await this.ask(credentials, { ...attempt, jsonMode: false });
+    for (let retry = 0; retry < PARAMETER_RETRIES && reply.status === BAD_REQUEST; retry += 1) {
+      if (attempt.maxTokens === null && requiresMaxTokens(reply.body)) {
+        this.logger.warn(
+          `${attempt.label}: the provider wants a ceiling on the answer, adding one`,
+        );
+        attempt = { ...attempt, maxTokens: FALLBACK_MAX_TOKENS };
+      } else {
+        const refused = refusedParameter(reply.body);
+
+        if (!refused || attempt.dropped.includes(refused)) {
+          break;
+        }
+
+        this.logger.warn(
+          `${attempt.label}: the provider refused ${refused}, asking again without it: ${snippet(reply.body)}`,
+        );
+        attempt = { ...attempt, dropped: [...attempt.dropped, refused] };
+      }
+
+      reply = await this.ask(credentials, attempt);
     }
 
     if (reply.status === UNAUTHORISED) {
@@ -122,11 +122,6 @@ export class ProviderChatService {
     return this.readContent(reply, attempt.label);
   }
 
-  /**
-   * The provider's answer, asked twice when the first refusal was one that
-   * passes on its own - a rate limit, an overloaded model. A request that timed
-   * out is not repeated: it would only spend the same minute again.
-   */
   private async ask(credentials: ProviderCredentials, attempt: Attempt): Promise<ProviderReply> {
     const reply = await this.send(credentials, attempt);
 
@@ -158,10 +153,8 @@ export class ProviderChatService {
 
     const choice = payload.choices?.[0];
 
-    // A budget too small for the model's thinking truncates the JSON, which
-    // reads downstream as a malformed answer rather than as the cause it is.
     if (choice?.finish_reason === RAN_OUT_OF_ROOM) {
-      this.logger.warn(`${label}: the answer was cut off at the token ceiling`);
+      this.logger.warn(`${label}: the answer was cut off at the provider's own ceiling`);
 
       throw new BadGatewayException('The provider ran out of room before it finished the answer');
     }
@@ -181,10 +174,12 @@ export class ProviderChatService {
     const timeout = setTimeout(() => controller.abort(), attempt.timeoutMs);
     const body = JSON.stringify({
       model: attempt.model,
-      temperature: 0,
-      max_tokens: attempt.maxTokens,
       messages: attempt.messages,
-      ...(attempt.jsonMode ? { response_format: { type: 'json_object' } } : {}),
+      ...(attempt.maxTokens === null ? {} : { max_tokens: attempt.maxTokens }),
+      ...(attempt.dropped.includes('temperature') ? {} : { temperature: 0 }),
+      ...(attempt.dropped.includes('response_format')
+        ? {}
+        : { response_format: { type: 'json_object' } }),
     });
     const started = Date.now();
 
@@ -194,7 +189,7 @@ export class ProviderChatService {
         signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${credentials.apiKey}`,
+          ...providerHeaders(credentials.baseUrl, credentials.apiKey),
         },
         body,
       });
@@ -216,8 +211,6 @@ export class ProviderChatService {
     } catch (error) {
       const ms = Date.now() - started;
 
-      // Without this the log was silent and every cause - a timeout, DNS, a
-      // dropped connection - reached the phone wearing the same sentence.
       if (controller.signal.aborted) {
         this.logger.warn(`${attempt.label}: no answer within ${attempt.timeoutMs} ms`);
 

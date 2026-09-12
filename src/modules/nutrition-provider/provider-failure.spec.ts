@@ -1,8 +1,9 @@
 import {
-  aboutJsonMode,
   describeFailure,
   isRetryable,
   providerDetail,
+  refusedParameter,
+  requiresMaxTokens,
   retryAfterSeconds,
 } from './provider-failure';
 
@@ -22,14 +23,30 @@ describe('provider failure', () => {
     expect(retryAfterSeconds('Wed, 21 Oct 2026 07:28:00 GMT')).toBeNull();
   });
 
-  it('retries a 400 without JSON mode only when that is what was refused', () => {
-    expect(aboutJsonMode('{"error":{"message":"response_format is not supported"}}')).toBe(true);
-    expect(aboutJsonMode('{"error":{"message":"json_object unavailable for this model"}}')).toBe(
-      true,
+  it('names the parameter a 400 objected to, so the retry drops that one', () => {
+    expect(refusedParameter('{"error":{"message":"response_format is not supported"}}')).toBe(
+      'response_format',
     );
-    // Sending the whole photograph a second time cannot fix either of these.
-    expect(aboutJsonMode('{"error":{"message":"image exceeds the maximum size"}}')).toBe(false);
-    expect(aboutJsonMode('{"error":{"message":"model does not support images"}}')).toBe(false);
+    expect(refusedParameter('{"error":{"message":"json_object unavailable for this model"}}')).toBe(
+      'response_format',
+    );
+    expect(
+      refusedParameter(
+        `{"error":{"message":"Unsupported value: 'temperature' does not support 0"}}`,
+      ),
+    ).toBe('temperature');
+    expect(refusedParameter('{"error":{"message":"image exceeds the maximum size"}}')).toBeNull();
+    expect(refusedParameter('{"error":{"message":"model does not support images"}}')).toBeNull();
+  });
+
+  it('spots the provider that will not answer without a ceiling on the answer', () => {
+    expect(requiresMaxTokens('{"error":{"message":"max_tokens: Field required"}}')).toBe(true);
+    expect(
+      requiresMaxTokens(
+        `{"error":{"message":"Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead."}}`,
+      ),
+    ).toBe(false);
+    expect(requiresMaxTokens('{"error":{"message":"rate limit reached"}}')).toBe(false);
   });
 
   it('repeats the sentence the provider meant as a message', () => {
