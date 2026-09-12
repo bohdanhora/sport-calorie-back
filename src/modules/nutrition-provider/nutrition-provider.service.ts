@@ -14,7 +14,12 @@ import type {
   ProviderModelsDto,
   SaveNutritionProviderDto,
 } from './dto/nutrition-provider.dto';
-import { looksLikeVisionModel } from './provider-catalog';
+import {
+  findProvider,
+  looksLikeVisionModel,
+  providerHeaders,
+  usableModels,
+} from './provider-catalog';
 
 export interface ProviderCredentials {
   baseUrl: string;
@@ -86,8 +91,6 @@ export class NutritionProviderService {
       visionOverride: dto.visionOverride ?? false,
     };
 
-    // Without a new key the stored one stays as it is, so changing a model does
-    // not mean typing the key out again.
     const secret = apiKey
       ? (() => {
           const encrypted = encryptSecret(apiKey, this.config.encryptionKey);
@@ -142,11 +145,6 @@ export class NutritionProviderService {
     };
   }
 
-  /**
-   * Asks the provider which models the stored key can reach. No OpenAI
-   * compatible API reports modality, so the vision subset is recognised from
-   * the ids rather than read from the answer.
-   */
   async listModels(userId: string): Promise<ProviderModelsDto> {
     const credentials = await this.getCredentials(userId);
 
@@ -154,7 +152,7 @@ export class NutritionProviderService {
 
     try {
       response = await fetch(`${credentials.baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${credentials.apiKey}` },
+        headers: providerHeaders(credentials.baseUrl, credentials.apiKey),
         signal: AbortSignal.timeout(MODELS_TIMEOUT_MS),
       });
     } catch {
@@ -170,10 +168,12 @@ export class NutritionProviderService {
     }
 
     const payload = (await response.json()) as ModelListResponse;
-    const models = (payload.data ?? [])
-      .map((model) => model.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0)
-      .sort((a, b) => a.localeCompare(b));
+    const models = usableModels(
+      (payload.data ?? [])
+        .map((model) => model.id)
+        .filter((id): id is string => typeof id === 'string'),
+      findProvider(credentials.baseUrl)?.models ?? [],
+    );
 
     return {
       models,

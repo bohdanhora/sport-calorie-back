@@ -94,6 +94,15 @@ export class CatalogProviderDto {
   @ApiProperty({ example: 'https://console.groq.com/keys' })
   apiKeysUrl!: string;
 
+  @ApiProperty({ example: 'gsk_...' })
+  keyHint!: string;
+
+  @ApiProperty({ example: 'qwen/qwen3.8-27b' })
+  defaultModel!: string;
+
+  @ApiProperty({ type: [String], example: ['qwen/qwen3.8-27b', 'openai/gpt-oss-120b'] })
+  models!: string[];
+
   @ApiProperty({ type: [String], example: ['qwen/qwen3.6-27b'] })
   visionPrefixes!: string[];
 }
