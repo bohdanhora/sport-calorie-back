@@ -33,7 +33,7 @@ PostgreSQL provides persistence through Prisma with SQL migrations. Every formul
 - **Exercise energy estimation** - MET-based calculation, the ACSM walking equation for speed and incline, intensity scaling, and a manual override that survives edits.
 - **Weight history** - one measurement per local day, total change, and a least-squares weekly trend.
 - **Server-side aggregation** - a full day, a compact day range, and a progress range with averages and an activity breakdown, each in a single request.
-- **Automatic nutrition estimation** - an optional per-user provider that turns a described dish into a validated draft entry.
+- **Automatic nutrition estimation** - an optional per-user provider that turns a described dish, or a photograph of one, into a validated draft entry.
 - **Timezone-correct days** - every record carries both the exact instant and the calendar day it belongs to in the user's timezone.
 
 ## Tech stack
@@ -129,7 +129,13 @@ Walking sessions accept any two of duration, distance, and average speed, and th
 
 ## Automatic nutrition estimation
 
-A user can connect any OpenAI-compatible chat completions endpoint and describe a dish in words instead of typing every number. `POST /api/food-entries/parse` sends the description, receives structured JSON, validates it exactly like manual input, and returns a draft. Nothing reaches the diary until the user confirms the values in the form.
+A user can connect any OpenAI-compatible chat completions endpoint and describe a dish in words instead of typing every number. `POST /api/food-entries/parse` sends the description, receives structured JSON, validates it exactly like manual input, and returns a draft. `POST /api/food-entries/scan` does the same for a photograph, when the chosen model accepts images. Nothing reaches the diary until the user confirms the values in the form.
+
+`GET /api/nutrition-provider/catalog` lists the providers the app knows - OpenAI, Anthropic, Google Gemini, xAI, Groq and OpenRouter - each with its base URL, where to create a key, the shape that key has, a default model and the ids the app recognises, including the ones known to accept images. Any other endpoint can be typed in by hand. Anthropic and Gemini are reached through their OpenAI-compatible routes: `providerHeaders` adds `x-api-key` and `anthropic-version` for Anthropic so its own model list answers too, and Gemini's `models/...` ids are trimmed to what its chat endpoint expects.
+
+Once a key is stored, `GET /api/nutrition-provider/models` asks the provider what that key can reach and returns the models that can hold a conversation - embeddings, speech and image generation are filtered out - with the catalog's known ids first. Before there is a key, the catalog's own list is what the settings screen offers, so nothing has to be typed to get started.
+
+The request itself carries no token ceiling: newer models reject `max_tokens` outright, and a reasoning model spends such a budget before it writes a word. A `400` that names a parameter the app sent - JSON mode, temperature - is asked again without that parameter, and a provider that insists on a ceiling gets a generous one.
 
 Three properties make this safe to ship:
 
@@ -137,7 +143,7 @@ Three properties make this safe to ship:
 - **Every result is cached as a `Food`.** The parsed portion is stored with `source: EXTERNAL` and the normalized query as `externalId`, so repeating a dish costs nothing and keeps working without the provider.
 - **The key never leaves the server.** It is encrypted with AES-256-GCM under `ENCRYPTION_KEY`, and the API only ever returns a mask such as `sk-...4f2a`.
 
-Only dish descriptions the user submits are sent to the provider. No other diary content leaves the server.
+Only the dish descriptions and photographs the user submits are sent to the provider. No other diary content leaves the server.
 
 ## Data model
 
@@ -321,8 +327,8 @@ Base path `/api`. Every route requires a Bearer token except registration, login
 | Targets | `GET /targets`, `GET /targets/energy`, `PUT /targets/:date`, `DELETE /targets/:date` |
 | Foods | `GET /foods`, `GET /foods/recent`, `POST /foods`, `PATCH /foods/:id`, `DELETE /foods/:id` |
 | Diary | `GET /food-entries`, `POST /food-entries`, `PATCH /food-entries/:id`, `DELETE /food-entries/:id` |
-| Estimation | `POST /food-entries/parse`, `GET`, `PUT`, `DELETE /nutrition-provider`, `POST /nutrition-provider/check` |
-| Activities | `GET /activity-types`, `GET /activity-entries`, `POST /activity-entries`, `POST /activity-entries/estimate`, `PATCH /activity-entries/:id`, `DELETE /activity-entries/:id` |
+| Estimation | `POST /food-entries/parse`, `POST /food-entries/scan`, `GET`, `PUT`, `DELETE /nutrition-provider`, `GET /nutrition-provider/catalog`, `GET /nutrition-provider/models`, `POST /nutrition-provider/check` |
+| Activities | `GET /activity-types`, `GET /activity-entries`, `POST /activity-entries`, `POST /activity-entries/parse`, `POST /activity-entries/estimate`, `PATCH /activity-entries/:id`, `DELETE /activity-entries/:id` |
 | Weight | `GET /weight`, `PUT /weight/:date`, `DELETE /weight/:date` |
 | Aggregation | `GET /dashboard`, `GET /history`, `GET /progress` |
 | Health | `GET /health` |
