@@ -93,8 +93,6 @@ export class ProfileService {
       select: { timezone: true },
     });
 
-    // The starting weight is what every trend and the energy estimate build on,
-    // so it is stored as a normal entry for today rather than on the profile.
     await this.weightService.upsert(userId, todayInTimeZone(profile.timezone), {
       weightKg: dto.currentWeightKg,
     });

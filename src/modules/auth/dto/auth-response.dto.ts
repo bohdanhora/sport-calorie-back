@@ -27,11 +27,6 @@ export class AuthResponseDto {
   @ApiProperty({ type: AuthenticatedUserDto })
   user!: AuthenticatedUserDto;
 
-  /**
-   * Also sent as the `sc_refresh` cookie. It is repeated here because Safari
-   * drops that cookie when the API sits on an unrelated domain, and such a
-   * client has to keep the token itself to survive a page reload.
-   */
   @ApiProperty({ description: 'The refresh token, mirroring the sc_refresh cookie' })
   refreshToken!: string;
 }

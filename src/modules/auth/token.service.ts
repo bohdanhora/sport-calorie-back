@@ -19,13 +19,6 @@ export interface IssuedRefreshToken {
 
 const REFRESH_TOKEN_BYTES = 48;
 
-/**
- * How long a rotated refresh token keeps working. A page load can fire the
- * restore call and a retry after a 401 within milliseconds of each other, and
- * on a phone the two can also be a bfcache restore racing the live tab. Both
- * present the same cookie; without this window the slower one would be told the
- * session is gone and the user would be back on the sign-in screen.
- */
 const ROTATION_GRACE_MS = 60_000;
 
 @Injectable()
@@ -73,7 +66,6 @@ export class TokenService {
     });
   }
 
-  /** Retires a token in favour of its replacement, leaving it valid for the grace window. */
   async rotateRefreshToken(token: string): Promise<void> {
     const now = new Date();
 
@@ -115,10 +107,6 @@ export class TokenService {
     return result.count;
   }
 
-  /**
-   * A sign-out leaves `rotatedAt` unset, so it ends the session at once; only a
-   * token the server itself replaced gets the grace window.
-   */
   private isWithinRotationGrace(rotatedAt: Date | null): boolean {
     return rotatedAt !== null && Date.now() - rotatedAt.getTime() < ROTATION_GRACE_MS;
   }

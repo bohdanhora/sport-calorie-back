@@ -39,13 +39,6 @@ const asPositiveInteger = (value: unknown): number | null => {
   return parsed === null ? null : Math.round(parsed);
 };
 
-/**
- * Turns a sentence into the fields the activity form holds. Deliberately not
- * into a calorie count: the app already derives that from MET, body weight and
- * duration, and a number the model made up would quietly replace a number that
- * was actually calculated. The model picks the activity and the quantities; the
- * energy still comes from the same estimator the form uses.
- */
 @Injectable()
 export class ActivityParsingService {
   constructor(
@@ -76,8 +69,6 @@ export class ActivityParsingService {
       throw new BadGatewayException(`The provider chose an activity that does not exist`);
     }
 
-    // Only keep what this activity actually tracks, so a model that volunteers a
-    // distance for push-ups does not push it into the form.
     const draft = {
       activityTypeId: type.id,
       durationSec: type.tracksDuration ? asPositiveInteger(answer.durationSec) : null,

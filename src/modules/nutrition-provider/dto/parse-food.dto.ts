@@ -17,7 +17,6 @@ export class ParseFoodDto {
   locale?: string;
 }
 
-/** Roughly 4 MB of binary once base64 is unpacked; the client downscales first. */
 const MAX_IMAGE_CHARS = 5_600_000;
 
 export class ScanFoodDto {

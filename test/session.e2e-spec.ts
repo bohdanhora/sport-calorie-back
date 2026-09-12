@@ -15,11 +15,6 @@ interface SessionBody {
   user: { id: string };
 }
 
-/**
- * Covers what a phone actually does: Safari refuses the cross-site refresh
- * cookie, so the app has to get by on the token alone, and it has to do so
- * without disturbing the desktop signed in to the same account.
- */
 describe('Sessions', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -32,7 +27,6 @@ describe('Sessions', () => {
   const signIn = async (): Promise<SessionBody> =>
     (await post('login', { email, password: PASSWORD }).expect(200)).body as SessionBody;
 
-  /** Refreshes the way a browser without the cookie has to: token in the body. */
   const refreshWithoutCookie = (refreshToken: string): request.Test =>
     post('refresh', { refreshToken });
 

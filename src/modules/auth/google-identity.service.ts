@@ -41,8 +41,6 @@ export class GoogleIdentityService {
       throw new UnauthorizedException('Could not verify the Google account');
     }
 
-    // An unverified address could belong to somebody else, so it must never be
-    // matched against an existing password account.
     if (!payload.email_verified) {
       throw new UnauthorizedException('This Google account has no verified email address');
     }

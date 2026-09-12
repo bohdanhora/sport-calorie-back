@@ -31,7 +31,6 @@ import { ActivityEnergyEstimateDto, ActivityEntryDto } from './dto/activity-entr
 import { ActivityTypeDto } from './dto/activity-type-response.dto';
 import { ParseActivityDto, ParsedActivityDto } from './dto/parse-activity.dto';
 
-// The provider meters these; a stuck client should not eat a daily allowance.
 const PARSE_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
 
 @ApiTags('activities')

@@ -15,12 +15,6 @@ import { TokenService } from './token.service';
 
 export const REFRESH_COOKIE_NAME = 'sc_refresh';
 
-/**
- * Read straight from the environment because `@Throttle` is evaluated when the
- * class is defined, long before anything is injectable. The default is what
- * production should run; a local machine drives these endpoints far harder than
- * a person ever does, which is what `AUTH_RATE_LIMIT` is for.
- */
 const CREDENTIAL_RATE_LIMIT = Number(process.env.AUTH_RATE_LIMIT ?? 10);
 
 const CREDENTIAL_THROTTLE = { default: { limit: CREDENTIAL_RATE_LIMIT, ttl: 60_000 } };
@@ -101,10 +95,6 @@ export class AuthController {
     response.clearCookie(REFRESH_COOKIE_NAME, this.cookieOptions());
   }
 
-  /**
-   * The cookie is the trustworthy copy, so it is read first; the body is the
-   * fallback for a browser that would not store a cross-site cookie at all.
-   */
   private readRefreshToken(request: Request, dto: SessionTokenDto): string | undefined {
     const cookies = request.cookies as Record<string, string | undefined> | undefined;
     return cookies?.[REFRESH_COOKIE_NAME] ?? dto.refreshToken;

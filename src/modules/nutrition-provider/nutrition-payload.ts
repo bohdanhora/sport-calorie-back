@@ -48,7 +48,6 @@ const readUnit = (value: unknown): FoodUnit => {
   return candidate in FoodUnit ? (candidate as FoodUnit) : FoodUnit.GRAM;
 };
 
-/** The first balanced `{...}` in the text, string literals respected. */
 const sliceFirstObject = (text: string): string | null => {
   const start = text.indexOf('{');
 
@@ -87,13 +86,6 @@ const sliceFirstObject = (text: string): string | null => {
   return null;
 };
 
-/**
- * Digs the JSON object out of whatever the model wrapped it in. Asking for JSON
- * mode covers this, but not every provider accepts the flag alongside an image,
- * and without it a reasoning model opens with a <think> block, a chatty one adds
- * a sentence either side, and plenty fence the object in markdown. Any of those
- * would make JSON.parse throw on an answer that is perfectly usable.
- */
 export const extractJsonObject = (raw: string): string => {
   const spoken = raw.replace(THINKING_PATTERN, '');
   const fenced = FENCE_PATTERN.exec(spoken);

@@ -118,11 +118,6 @@ export class FoodParsingService {
     };
   }
 
-  /**
-   * The photo path. No cache lookup by text, because a photograph has no text
-   * to key on; the saved food is keyed by a digest of the image instead, so the
-   * same picture sent twice costs one request.
-   */
   async scan(userId: string, dto: ScanFoodDto): Promise<ParsedFoodDto> {
     const credentials = await this.providerService.getCredentials(userId);
     const model = credentials.visionModelName;
@@ -131,7 +126,6 @@ export class FoodParsingService {
       throw new BadRequestException('No model for photos is configured');
     }
 
-    // The catalog trails new releases, so the user is allowed to insist.
     if (!looksLikeVisionModel(credentials.baseUrl, model) && !credentials.visionOverride) {
       throw new BadRequestException(`${model} is not known to accept images`);
     }
@@ -226,11 +220,6 @@ export class FoodParsingService {
     return this.readAnswer(content);
   }
 
-  /**
-   * The answer, or a 502 the client can show. The raw text goes to the log on
-   * the way out: when a model wanders off the JSON it was asked for, what it
-   * said instead is the only thing that explains the failure.
-   */
   private readAnswer(content: string): ParsedNutrition {
     try {
       return parseNutritionPayload(content);

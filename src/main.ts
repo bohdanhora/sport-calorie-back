@@ -15,8 +15,6 @@ const DOCS_PATH = 'api/docs';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
 
-  // A downscaled photo arrives as a base64 data URL, which the 100 kB default
-  // for JSON bodies would reject long before validation ever saw it.
   app.useBodyParser('json', { limit: '6mb' });
   const logger = app.get(Logger);
 

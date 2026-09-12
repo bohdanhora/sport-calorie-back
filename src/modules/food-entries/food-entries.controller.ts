@@ -26,9 +26,6 @@ import { FoodEntryDto } from './dto/food-entry-response.dto';
 import { FoodEntriesService } from './food-entries.service';
 
 const PARSE_THROTTLE = { default: { limit: 30, ttl: 60_000 } };
-// Free provider tiers meter photos far harder than text, and each one is a
-// couple of thousand tokens; a lower ceiling keeps a stuck client from burning
-// the daily allowance in a minute.
 const SCAN_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
 
 @ApiTags('food-entries')

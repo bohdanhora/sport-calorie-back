@@ -16,7 +16,6 @@ const DEFAULT_LOCALE = 'en';
 const PROFILE_SESSION = { displayName: true, timezone: true, locale: true } as const;
 
 export interface AuthResult {
-  /** The controller adds the refresh token once it has also set the cookie. */
   response: Omit<AuthResponseDto, 'refreshToken'>;
   refreshToken: string;
 }
@@ -164,8 +163,6 @@ export class AuthService {
       select: { id: true, email: true, googleId: true, profile: { select: PROFILE_SESSION } },
     });
 
-    // Google has verified the address, so an account created with a password can
-    // be linked to it rather than turned into a duplicate.
     if (existing) {
       if (existing.googleId === identity.googleId && existing.profile?.displayName) {
         return existing;
