@@ -133,7 +133,7 @@ A user can connect any OpenAI-compatible chat completions endpoint and describe 
 
 `GET /api/nutrition-provider/catalog` lists the providers the app knows - OpenAI, Anthropic, Google Gemini, xAI, Groq and OpenRouter - each with its base URL, where to create a key, the shape that key has, a default model and the ids the app recognises, including the ones known to accept images. Any other endpoint can be typed in by hand. Anthropic and Gemini are reached through their OpenAI-compatible routes: `providerHeaders` adds `x-api-key` and `anthropic-version` for Anthropic so its own model list answers too, and Gemini's `models/...` ids are trimmed to what its chat endpoint expects.
 
-Once a key is stored, `GET /api/nutrition-provider/models` asks the provider what that key can reach and returns the models that can hold a conversation - embeddings, speech and image generation are filtered out - with the catalog's known ids first. Before there is a key, the catalog's own list is what the settings screen offers, so nothing has to be typed to get started.
+Once a key is stored, `GET /api/nutrition-provider/models` asks the provider what that key can reach and keeps the models that can hold a conversation - embeddings, speech and image generation are filtered out - with the catalog's known ids first. The list is stored with the provider row, so later sessions and other devices read it from the database instead of asking the provider again. Saving a new key or a different base URL clears the stored copy, and the next read fetches it afresh; `POST /api/nutrition-provider/models/refresh` does the same on demand. The settings screen offers no list before a provider is connected, only a field for the model id.
 
 The request itself carries no token ceiling: newer models reject `max_tokens` outright, and a reasoning model spends such a budget before it writes a word. A `400` that names a parameter the app sent - JSON mode, temperature - is asked again without that parameter, and a provider that insists on a ceiling gets a generous one.
 
@@ -327,7 +327,7 @@ Base path `/api`. Every route requires a Bearer token except registration, login
 | Targets | `GET /targets`, `GET /targets/energy`, `PUT /targets/:date`, `DELETE /targets/:date` |
 | Foods | `GET /foods`, `GET /foods/recent`, `POST /foods`, `PATCH /foods/:id`, `DELETE /foods/:id` |
 | Diary | `GET /food-entries`, `POST /food-entries`, `PATCH /food-entries/:id`, `DELETE /food-entries/:id` |
-| Estimation | `POST /food-entries/parse`, `POST /food-entries/scan`, `GET`, `PUT`, `DELETE /nutrition-provider`, `GET /nutrition-provider/catalog`, `GET /nutrition-provider/models`, `POST /nutrition-provider/check` |
+| Estimation | `POST /food-entries/parse`, `POST /food-entries/scan`, `GET`, `PUT`, `DELETE /nutrition-provider`, `GET /nutrition-provider/catalog`, `GET /nutrition-provider/models`, `POST /nutrition-provider/models/refresh`, `POST /nutrition-provider/check` |
 | Activities | `GET /activity-types`, `GET /activity-entries`, `POST /activity-entries`, `POST /activity-entries/parse`, `POST /activity-entries/estimate`, `PATCH /activity-entries/:id`, `DELETE /activity-entries/:id` |
 | Weight | `GET /weight`, `PUT /weight/:date`, `DELETE /weight/:date` |
 | Aggregation | `GET /dashboard`, `GET /history`, `GET /progress` |

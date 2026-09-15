@@ -104,10 +104,15 @@ export class NutritionProviderService {
         })()
       : null;
 
+    const staleModels =
+      existing !== null && (secret !== null || existing.baseUrl !== settings.baseUrl)
+        ? { models: [], modelsFetchedAt: null }
+        : {};
+
     if (existing) {
       await this.prisma.nutritionProvider.update({
         where: { userId },
-        data: { ...settings, ...(secret ?? {}) },
+        data: { ...settings, ...(secret ?? {}), ...staleModels },
       });
     } else {
       await this.prisma.nutritionProvider.create({
@@ -146,8 +151,44 @@ export class NutritionProviderService {
   }
 
   async listModels(userId: string): Promise<ProviderModelsDto> {
-    const credentials = await this.getCredentials(userId);
+    const provider = await this.prisma.nutritionProvider.findUnique({
+      where: { userId },
+      select: { baseUrl: true, models: true, modelsFetchedAt: true },
+    });
 
+    if (!provider) {
+      throw new NotFoundException('No nutrition provider configured');
+    }
+
+    if (!provider.modelsFetchedAt) {
+      return this.refreshModels(userId);
+    }
+
+    return this.toModelsDto(provider.baseUrl, provider.models, provider.modelsFetchedAt);
+  }
+
+  async refreshModels(userId: string): Promise<ProviderModelsDto> {
+    const credentials = await this.getCredentials(userId);
+    const models = await this.fetchModels(credentials);
+    const fetchedAt = new Date();
+
+    await this.prisma.nutritionProvider.update({
+      where: { userId },
+      data: { models, modelsFetchedAt: fetchedAt },
+    });
+
+    return this.toModelsDto(credentials.baseUrl, models, fetchedAt);
+  }
+
+  private toModelsDto(baseUrl: string, models: string[], fetchedAt: Date): ProviderModelsDto {
+    return {
+      models,
+      visionModels: models.filter((id) => looksLikeVisionModel(baseUrl, id)),
+      fetchedAt: fetchedAt.toISOString(),
+    };
+  }
+
+  private async fetchModels(credentials: ProviderCredentials): Promise<string[]> {
     let response: Response;
 
     try {
@@ -168,16 +209,12 @@ export class NutritionProviderService {
     }
 
     const payload = (await response.json()) as ModelListResponse;
-    const models = usableModels(
+
+    return usableModels(
       (payload.data ?? [])
         .map((model) => model.id)
         .filter((id): id is string => typeof id === 'string'),
       findProvider(credentials.baseUrl)?.models ?? [],
     );
-
-    return {
-      models,
-      visionModels: models.filter((id) => looksLikeVisionModel(credentials.baseUrl, id)),
-    };
   }
 }

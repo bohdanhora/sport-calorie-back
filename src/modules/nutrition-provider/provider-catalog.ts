@@ -95,7 +95,7 @@ export const PROVIDER_CATALOG: CatalogProvider[] = [
 const ANTHROPIC_VERSION = '2023-06-01';
 const SKIPPED_MODELS =
   /embed|whisper|tts|dall-e|image|audio|moderation|rerank|guard|realtime|speech|transcri|search/i;
-const MODEL_LIMIT = 60;
+const MODEL_LIMIT = 500;
 
 const normalise = (baseUrl: string): string => baseUrl.trim().replace(/\/+$/, '').toLowerCase();
 

@@ -42,10 +42,23 @@ export class NutritionProviderController {
 
   @Get('models')
   @Throttle(MODELS_THROTTLE)
-  @ApiOperation({ summary: 'Models the stored key can reach, and which of them accept images' })
+  @ApiOperation({
+    summary: 'Models the stored key can reach, and which of them accept images',
+    description:
+      'Served from the copy stored with the provider. The provider is only asked when there is no copy yet, which is right after connecting or changing the key.',
+  })
   @ApiOkResponse({ type: ProviderModelsDto })
   models(@CurrentUser() user: AuthenticatedUser): Promise<ProviderModelsDto> {
     return this.providerService.listModels(user.id);
+  }
+
+  @Post('models/refresh')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(MODELS_THROTTLE)
+  @ApiOperation({ summary: 'Ask the provider for its model list again and store it' })
+  @ApiOkResponse({ type: ProviderModelsDto })
+  refreshModels(@CurrentUser() user: AuthenticatedUser): Promise<ProviderModelsDto> {
+    return this.providerService.refreshModels(user.id);
   }
 
   @Get()

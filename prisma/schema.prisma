@@ -156,6 +156,9 @@ model NutritionProvider {
 
   visionOverride Boolean @default(false)
 
+  models          String[]  @default([])
+  modelsFetchedAt DateTime? @db.Timestamptz(3)
+
   apiKeyCipher String
   apiKeyIv     String
   apiKeyTag    String

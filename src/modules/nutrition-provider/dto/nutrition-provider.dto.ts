@@ -116,6 +116,15 @@ export class ProviderModelsDto {
     description: 'The subset of models this app recognises as accepting images.',
   })
   visionModels!: string[];
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '2026-09-15T12:00:00.000Z',
+    description:
+      'When the list was last read from the provider. The stored copy is served until a refresh.',
+  })
+  fetchedAt!: string | null;
 }
 
 export class NutritionProviderCheckDto {
