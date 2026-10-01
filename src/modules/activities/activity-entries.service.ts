@@ -24,7 +24,7 @@ import type {
 
 type ActivityEntryWithType = ActivityEntry & { activityType: ActivityType };
 
-const RECENT_LIMIT = 8;
+const RECENT_LIMIT = 20;
 const RECENT_SCAN = 120;
 
 interface ResolvedTiming {
