@@ -17,6 +17,6 @@ import { ActivityTypesService } from './activity-types.service';
     ActivityEnergyService,
     ActivityParsingService,
   ],
-  exports: [ActivityEntriesService, ActivityEnergyService],
+  exports: [ActivityEntriesService, ActivityEnergyService, ActivityTypesService],
 })
 export class ActivitiesModule {}

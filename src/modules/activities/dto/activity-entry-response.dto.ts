@@ -48,6 +48,13 @@ export class ActivityEntryDto {
 
   @ApiProperty({ example: '2026-03-02' })
   date!: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    description: 'The calendar plan this entry was logged from',
+  })
+  plannedSessionId!: string | null;
 }
 
 export class ActivityEnergyEstimateDto {

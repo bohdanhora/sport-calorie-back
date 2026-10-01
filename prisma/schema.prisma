@@ -89,6 +89,9 @@ model User {
   foodEntries       FoodEntry[]
   activityTypes     ActivityType[]
   activityEntries   ActivityEntry[]
+  savedExercises    SavedExercise[]
+  workouts          Workout[]
+  plannedSessions   PlannedSession[]
   weightEntries     WeightEntry[]
   dailyGoals        DailyGoal[]
   nutritionProvider NutritionProvider?
@@ -292,8 +295,10 @@ model ActivityType {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  user    User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  entries ActivityEntry[]
+  user            User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entries         ActivityEntry[]
+  savedExercises  SavedExercise[]
+  plannedSessions PlannedSession[]
 
   @@unique([userId, slug])
   @@index([category, sortOrder])
@@ -326,12 +331,115 @@ model ActivityEntry {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activityType ActivityType @relation(fields: [activityTypeId], references: [id], onDelete: Restrict)
+  plannedSessionId String? @db.Uuid
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityType   ActivityType    @relation(fields: [activityTypeId], references: [id], onDelete: Restrict)
+  plannedSession PlannedSession? @relation(fields: [plannedSessionId], references: [id], onDelete: SetNull)
 
   @@index([userId, localDate])
   @@index([userId, activityTypeId, localDate])
+  @@index([plannedSessionId])
   @@map("activity_entries")
+}
+
+model SavedExercise {
+  id             String @id @default(uuid()) @db.Uuid
+  userId         String @db.Uuid
+  activityTypeId String @db.Uuid
+
+  name String
+
+  durationSec    Int?
+  distanceM      Float?
+  avgSpeedKmh    Float?
+  inclinePercent Float?
+  sets           Int?
+  reps           Int?
+  intensity      Intensity?
+
+  energyKcal Float?
+  notes      String?
+
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityType ActivityType      @relation(fields: [activityTypeId], references: [id], onDelete: Cascade)
+  workoutItems WorkoutExercise[]
+  plans        PlannedSession[]
+
+  @@index([userId, createdAt])
+  @@map("saved_exercises")
+}
+
+model Workout {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+
+  name  String
+  notes String?
+
+  lastUsedAt DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+  plans     PlannedSession[]
+
+  @@index([userId, createdAt])
+  @@map("workouts")
+}
+
+model WorkoutExercise {
+  workoutId  String @db.Uuid
+  exerciseId String @db.Uuid
+  position   Int
+
+  workout  Workout       @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise SavedExercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@id([workoutId, position])
+  @@index([exerciseId])
+  @@map("workout_exercises")
+}
+
+model PlannedSession {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+
+  localDate DateTime @db.Date
+  position  Int      @default(0)
+
+  workoutId      String? @db.Uuid
+  exerciseId     String? @db.Uuid
+  activityTypeId String? @db.Uuid
+
+  name           String?
+  durationSec    Int?
+  distanceM      Float?
+  avgSpeedKmh    Float?
+  inclinePercent Float?
+  sets           Int?
+  reps           Int?
+  intensity      Intensity?
+  energyKcal     Float?
+  notes          String?
+
+  completedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workout      Workout?        @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise     SavedExercise?  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  activityType ActivityType?   @relation(fields: [activityTypeId], references: [id], onDelete: Cascade)
+  entries      ActivityEntry[]
+
+  @@index([userId, localDate])
+  @@map("planned_sessions")
 }
 
 model WeightEntry {

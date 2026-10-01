@@ -35,6 +35,15 @@ export class ActivityEnergyService {
     measurements: ActivityMeasurements,
   ): Promise<ActivityEnergyResult> {
     const recordedWeightKg = await this.userContext.getWeightOnOrBefore(userId, date);
+
+    return this.estimateForWeight(activityType, recordedWeightKg, measurements);
+  }
+
+  estimateForWeight(
+    activityType: ActivityType,
+    recordedWeightKg: number | null,
+    measurements: ActivityMeasurements,
+  ): ActivityEnergyResult {
     const basedOnWeightKg = recordedWeightKg ?? FALLBACK_BODY_WEIGHT_KG;
 
     const metrics = deriveWalkingMetrics({

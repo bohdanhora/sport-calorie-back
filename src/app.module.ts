@@ -24,6 +24,7 @@ import { SummaryModule } from './modules/summary/summary.module';
 import { TargetsModule } from './modules/targets/targets.module';
 import { UserContextModule } from './modules/user-context/user-context.module';
 import { WeightModule } from './modules/weight/weight.module';
+import { WorkoutsModule } from './modules/workouts/workouts.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
@@ -63,6 +64,7 @@ const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
     NutritionProviderModule,
     ActivitiesModule,
     WeightModule,
+    WorkoutsModule,
     SummaryModule,
   ],
   providers: [

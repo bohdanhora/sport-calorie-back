@@ -66,6 +66,15 @@ export class ActivityEntriesController {
     return this.activityEntries.listByDate(user.id, query.date);
   }
 
+  @Get('recent')
+  @ApiOperation({
+    summary: 'Distinct activities logged most recently, to log again in one tap',
+  })
+  @ApiOkResponse({ type: [ActivityEntryDto] })
+  recent(@CurrentUser() user: AuthenticatedUser): Promise<ActivityEntryDto[]> {
+    return this.activityEntries.recent(user.id);
+  }
+
   @Post('parse')
   @HttpCode(HttpStatus.OK)
   @Throttle(PARSE_THROTTLE)

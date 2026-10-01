@@ -24,6 +24,9 @@ import type {
 
 type ActivityEntryWithType = ActivityEntry & { activityType: ActivityType };
 
+const RECENT_LIMIT = 8;
+const RECENT_SCAN = 120;
+
 interface ResolvedTiming {
   performedAt: Date;
   localDate: LocalDateString;
@@ -51,6 +54,43 @@ export class ActivityEntriesService {
     return entries.map((entry) => toActivityEntryDto(entry, userId));
   }
 
+  async recent(userId: string, limit = RECENT_LIMIT): Promise<ActivityEntryDto[]> {
+    const entries = await this.prisma.activityEntry.findMany({
+      where: { userId },
+      include: { activityType: true },
+      orderBy: [{ performedAt: 'desc' }, { createdAt: 'desc' }],
+      take: RECENT_SCAN,
+    });
+
+    const seen = new Set<string>();
+    const distinct: ActivityEntryWithType[] = [];
+
+    for (const entry of entries) {
+      const key = [
+        entry.activityTypeId,
+        entry.title?.trim().toLowerCase() ?? '',
+        entry.durationSec,
+        entry.distanceM,
+        entry.inclinePercent,
+        entry.sets,
+        entry.reps,
+        entry.intensity,
+        entry.energySource === EnergySource.MANUAL ? entry.energyKcal : '',
+      ].join('|');
+
+      if (!seen.has(key)) {
+        seen.add(key);
+        distinct.push(entry);
+      }
+
+      if (distinct.length >= limit) {
+        break;
+      }
+    }
+
+    return distinct.map((entry) => toActivityEntryDto(entry, userId));
+  }
+
   async estimate(
     userId: string,
     dto: EstimateActivityEnergyDto,
@@ -73,7 +113,37 @@ export class ActivityEntriesService {
   }
 
   async create(userId: string, dto: CreateActivityEntryDto): Promise<ActivityEntryDto> {
+    const [entry] = await this.createMany(userId, [dto]);
+
+    return entry;
+  }
+
+  async createMany(
+    userId: string,
+    dtos: CreateActivityEntryDto[],
+    plannedSessionId: string | null = null,
+  ): Promise<ActivityEntryDto[]> {
     const timezone = await this.userContext.getTimezone(userId);
+    const data: Prisma.ActivityEntryUncheckedCreateInput[] = [];
+
+    for (const dto of dtos) {
+      data.push({ ...(await this.buildEntry(userId, timezone, dto)), plannedSessionId });
+    }
+
+    const entries = await this.prisma.$transaction(
+      data.map((entry) =>
+        this.prisma.activityEntry.create({ data: entry, include: { activityType: true } }),
+      ),
+    );
+
+    return entries.map((entry) => toActivityEntryDto(entry, userId));
+  }
+
+  private async buildEntry(
+    userId: string,
+    timezone: string,
+    dto: CreateActivityEntryDto,
+  ): Promise<Prisma.ActivityEntryUncheckedCreateInput> {
     const timing = this.resolveTiming(timezone, dto.date, dto.performedAt);
     const activityType = await this.activityTypes.getAvailable(userId, dto.activityTypeId);
 
@@ -84,31 +154,26 @@ export class ActivityEntriesService {
       dto,
     );
 
-    const entry = await this.prisma.activityEntry.create({
-      data: {
-        userId,
-        activityTypeId: activityType.id,
-        title: dto.title?.trim() || null,
-        durationSec: estimate.metrics.durationSec,
-        distanceM: estimate.metrics.distanceM,
-        avgSpeedKmh: estimate.metrics.avgSpeedKmh,
-        inclinePercent: dto.inclinePercent ?? null,
-        sets: dto.sets ?? null,
-        reps: dto.reps ?? null,
-        intensity: dto.intensity ?? null,
-        energyKcal: dto.energyKcal ?? estimate.energyKcal,
-        energySource:
-          dto.energyKcal === null || dto.energyKcal === undefined
-            ? EnergySource.ESTIMATED
-            : EnergySource.MANUAL,
-        notes: dto.notes?.trim() || null,
-        performedAt: timing.performedAt,
-        localDate: parseLocalDate(timing.localDate),
-      },
-      include: { activityType: true },
-    });
-
-    return toActivityEntryDto(entry, userId);
+    return {
+      userId,
+      activityTypeId: activityType.id,
+      title: dto.title?.trim() || null,
+      durationSec: estimate.metrics.durationSec,
+      distanceM: estimate.metrics.distanceM,
+      avgSpeedKmh: estimate.metrics.avgSpeedKmh,
+      inclinePercent: dto.inclinePercent ?? null,
+      sets: dto.sets ?? null,
+      reps: dto.reps ?? null,
+      intensity: dto.intensity ?? null,
+      energyKcal: dto.energyKcal ?? estimate.energyKcal,
+      energySource:
+        dto.energyKcal === null || dto.energyKcal === undefined
+          ? EnergySource.ESTIMATED
+          : EnergySource.MANUAL,
+      notes: dto.notes?.trim() || null,
+      performedAt: timing.performedAt,
+      localDate: parseLocalDate(timing.localDate),
+    };
   }
 
   async update(
@@ -231,4 +296,5 @@ export const toActivityEntryDto = (
   notes: entry.notes,
   performedAt: entry.performedAt.toISOString(),
   date: toLocalDateString(entry.localDate),
+  plannedSessionId: entry.plannedSessionId,
 });

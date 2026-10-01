@@ -30,6 +30,7 @@ PostgreSQL provides persistence through Prisma with SQL migrations. Every formul
 - **Calorie targets** - estimated BMR and TDEE, a recommended target derived from the goal, an explicit manual override that the system never changes, and per-day overrides.
 - **Food catalog and diary** - reusable foods with any serving unit, a shared seeded catalog, per-user recently used foods, and diary entries that snapshot their nutrition on write.
 - **Activity catalog and log** - ten seeded activity types with capability flags, walking and treadmill sessions with derived speed, and repetition-based workouts.
+- **Saved exercises, routines, and a calendar** - reusable exercises with their measurements, routines that group them in order, and plans on calendar days that log their activities when marked done.
 - **Exercise energy estimation** - MET-based calculation, the ACSM walking equation for speed and incline, intensity scaling, and a manual override that survives edits.
 - **Weight history** - one measurement per local day, total change, and a least-squares weekly trend.
 - **Server-side aggregation** - a full day, a compact day range, and a progress range with averages and an activity breakdown, each in a single request.
@@ -157,12 +158,16 @@ Eleven tables, all with UUID primary keys, `createdAt` and `updatedAt`, foreign 
 | `foods`, `food_usages` | Reusable food definitions and per-user recency |
 | `food_entries` | The diary, with nutrition snapshotted on write |
 | `activity_types`, `activity_entries` | Activity catalog and the log |
+| `saved_exercises` | Exercises kept to log again, with their measurements |
+| `workouts`, `workout_exercises` | Routines and the exercises in them, in order |
+| `planned_sessions` | A routine, saved exercise, or one-off activity placed on a day, ordered within it |
 | `weight_entries` | One measurement per local day |
 | `nutrition_providers` | Encrypted external provider configuration |
 
 Two decisions are worth calling out:
 
 - **Walking is not a separate table.** A treadmill session is an `ActivityEntry` with a distance. One write path, one aggregation, and no duplicated calorie logic. The walking summary selects activity types in the `WALKING` category.
+- **Plans log real entries.** Marking a plan done writes ordinary `ActivityEntry` rows linked back by `plannedSessionId`, so the dashboard, history, and progress need no knowledge of plans. Undoing it removes exactly those rows; deleting the plan keeps them in the diary.
 - **Food entries snapshot their nutrition.** Editing a `Food` definition later never rewrites what the user already ate. The entry keeps the food id only so that recent foods and repeat logging keep working.
 
 `food_usages` holds per-user usage counts so that a shared catalog food does not leak one user's habits into another user's recent list. `Food.externalSource` and `Food.externalId` exist so an external food database can be imported later without a migration.
@@ -328,7 +333,10 @@ Base path `/api`. Every route requires a Bearer token except registration, login
 | Foods | `GET /foods`, `GET /foods/recent`, `POST /foods`, `PATCH /foods/:id`, `DELETE /foods/:id` |
 | Diary | `GET /food-entries`, `POST /food-entries`, `PATCH /food-entries/:id`, `DELETE /food-entries/:id` |
 | Estimation | `POST /food-entries/parse`, `POST /food-entries/scan`, `GET`, `PUT`, `DELETE /nutrition-provider`, `GET /nutrition-provider/catalog`, `GET /nutrition-provider/models`, `POST /nutrition-provider/models/refresh`, `POST /nutrition-provider/check` |
-| Activities | `GET /activity-types`, `GET /activity-entries`, `POST /activity-entries`, `POST /activity-entries/parse`, `POST /activity-entries/estimate`, `PATCH /activity-entries/:id`, `DELETE /activity-entries/:id` |
+| Activities | `GET /activity-types`, `GET /activity-entries`, `GET /activity-entries/recent`, `POST /activity-entries`, `POST /activity-entries/parse`, `POST /activity-entries/estimate`, `PATCH /activity-entries/:id`, `DELETE /activity-entries/:id` |
+| Saved exercises | `GET /saved-exercises`, `POST /saved-exercises`, `PATCH /saved-exercises/:id`, `DELETE /saved-exercises/:id`, `POST /saved-exercises/:id/log` |
+| Routines | `GET /workouts`, `POST /workouts`, `PATCH /workouts/:id`, `DELETE /workouts/:id`, `POST /workouts/:id/log` |
+| Calendar | `GET /calendar`, `POST /plans`, `PATCH /plans/:id`, `DELETE /plans/:id`, `POST /plans/:id/complete`, `POST /plans/:id/reopen` |
 | Weight | `GET /weight`, `PUT /weight/:date`, `DELETE /weight/:date` |
 | Aggregation | `GET /dashboard`, `GET /history`, `GET /progress` |
 | Health | `GET /health` |
@@ -383,6 +391,7 @@ sport-calorie-back/
 │   │   ├── foods/                # Reusable food definitions
 │   │   ├── food-entries/         # The diary
 │   │   ├── activities/           # Catalog, log, energy estimation
+│   │   ├── workouts/             # Saved exercises, routines, calendar plans
 │   │   ├── nutrition-provider/   # Provider settings and dish parsing
 │   │   ├── weight/               # Weight history and trend
 │   │   ├── summary/              # Dashboard, history, progress
@@ -408,7 +417,7 @@ The API image is a multi-stage build that runs `prisma migrate deploy` on start,
 
 The unit suite covers the places where a mistake would be invisible and wrong: BMR and TDEE, the calorie target and macro split, the calorie balance, MET and ACSM energy estimation, walking metric derivation, portion scaling, nutrition totals, the weight trend, timezone handling including daylight saving boundaries, secret encryption round trips, and the parsing rules applied to provider answers.
 
-The end-to-end suite drives the real daily flow against a running database: register, set a target, record weight, log food from a saved food, log a treadmill session, override an activity's calories, check that the dashboard aggregates consistently, and confirm that a 22:30 UTC entry lands on the next local day in Kyiv. A third covers sessions the way a phone meets them: the token comes back in the body, a refresh works from that token alone with no cookie, the same token refreshes twice without ending the session, two devices refresh without disturbing each other, and signing out on one closes only that one. A second suite covers the first run: a new account reports itself as not onboarded, one call stores the answers, the starting weight and the recommended target, the day picks that target up, answers the metabolic formula cannot use are rejected, and the Google endpoint refuses to pretend it works while no client id is configured.
+The end-to-end suite drives the real daily flow against a running database: register, set a target, record weight, log food from a saved food, log a treadmill session, override an activity's calories, check that the dashboard aggregates consistently, and confirm that a 22:30 UTC entry lands on the next local day in Kyiv. A third covers sessions the way a phone meets them: the token comes back in the body, a refresh works from that token alone with no cookie, the same token refreshes twice without ending the session, two devices refresh without disturbing each other, and signing out on one closes only that one. A fourth covers routines and the calendar: a treadmill walk saved by distance and speed gets its duration worked out, an exercise with nothing to estimate from is refused, a routine totals its exercises and logs them all on a day, recent activities come back once each, plans keep their order within a day and move between days, marking one done logs its activities and undoing it removes them, and deleting an exercise takes it out of its routine. A second suite covers the first run: a new account reports itself as not onboarded, one call stores the answers, the starting weight and the recommended target, the day picks that target up, answers the metabolic formula cannot use are rejected, and the Google endpoint refuses to pretend it works while no client id is configured.
 
 ```bash
 npm test
