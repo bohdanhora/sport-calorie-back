@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import {
+  adminConfig,
   appConfig,
   googleConfig,
   jwtConfig,
@@ -14,6 +15,7 @@ import {
 } from './config/app.config';
 import { validateEnvironment } from './config/environment';
 import { ActivitiesModule } from './modules/activities/activities.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FoodEntriesModule } from './modules/food-entries/food-entries.module';
 import { FoodsModule } from './modules/foods/foods.module';
@@ -35,7 +37,7 @@ const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
       isGlobal: true,
       cache: true,
       validate: validateEnvironment,
-      load: [appConfig, jwtConfig, securityConfig, googleConfig],
+      load: [appConfig, jwtConfig, securityConfig, googleConfig, adminConfig],
     }),
     LoggerModule.forRootAsync({
       inject: [ConfigService],
@@ -46,7 +48,11 @@ const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
           pinoHttp: {
             level: config.logLevel,
             transport: config.isProduction ? undefined : { target: 'pino-pretty' },
-            redact: ['req.headers.authorization', 'req.headers.cookie'],
+            redact: [
+              'req.headers.authorization',
+              'req.headers.cookie',
+              'req.headers["x-admin-key"]',
+            ],
             autoLogging: { ignore: (request) => request.url === '/api/health' },
           },
         };
@@ -66,6 +72,7 @@ const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
     WeightModule,
     WorkoutsModule,
     SummaryModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -272,6 +272,7 @@ Re-running the seed replaces the demo account and leaves real accounts untouched
 | `ENCRYPTION_KEY` | - | At least 32 characters. Encrypts stored provider API keys. Required. |
 | `COOKIE_DOMAIN` | - | Cookie domain in production. |
 | `AUTH_RATE_LIMIT` | `10` | Sign-ins and registrations allowed per minute per address. |
+| `ADMIN_API_KEY` | - | At least 32 characters, shared with the admin panel. Empty answers `404` on every `/admin` route. |
 
 ### Seed data
 
@@ -323,7 +324,7 @@ Passwords are hashed with bcrypt at 12 rounds.
 
 ## API overview
 
-Base path `/api`. Every route requires a Bearer token except registration, login, refresh, logout, and health.
+Base path `/api`. Every route requires a Bearer token except registration, login, refresh, logout, health, and the admin routes, which take the `X-Admin-Key` header instead.
 
 | Area | Routes |
 | --- | --- |
@@ -340,6 +341,7 @@ Base path `/api`. Every route requires a Bearer token except registration, login
 | Weight | `GET /weight`, `PUT /weight/:date`, `DELETE /weight/:date` |
 | Aggregation | `GET /dashboard`, `GET /history`, `GET /progress` |
 | Health | `GET /health` |
+| Admin | `GET /admin/stats`, `GET /admin/users?search=&limit=&offset=`, `GET /admin/users/:id` |
 
 Aggregation happens on the server. The dashboard is one request and the progress screen is one request, so the client never downloads every entry to add them up.
 

@@ -21,6 +21,11 @@ export interface GoogleConfig {
   isEnabled: boolean;
 }
 
+export interface AdminConfig {
+  apiKey: string;
+  isEnabled: boolean;
+}
+
 export interface JwtConfig {
   accessSecret: string;
   refreshSecret: string;
@@ -60,3 +65,9 @@ export const jwtConfig = registerAs<JwtConfig>('jwt', () => ({
   accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
   refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
 }));
+
+export const adminConfig = registerAs<AdminConfig>('admin', () => {
+  const apiKey = process.env.ADMIN_API_KEY ?? '';
+
+  return { apiKey, isEnabled: apiKey.length > 0 };
+});

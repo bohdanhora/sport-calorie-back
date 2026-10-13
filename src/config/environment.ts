@@ -8,6 +8,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -56,6 +57,11 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   GOOGLE_CLIENT_ID?: string;
+
+  @ValidateIf((environment: EnvironmentVariables) => Boolean(environment.ADMIN_API_KEY))
+  @IsString()
+  @MinLength(32)
+  ADMIN_API_KEY?: string;
 
   @IsString()
   @IsOptional()
