@@ -341,7 +341,7 @@ Base path `/api`. Every route requires a Bearer token except registration, login
 | Weight | `GET /weight`, `PUT /weight/:date`, `DELETE /weight/:date` |
 | Aggregation | `GET /dashboard`, `GET /history`, `GET /progress` |
 | Health | `GET /health` |
-| Admin | `GET /admin/stats`, `GET /admin/users?search=&limit=&offset=`, `GET /admin/users/:id` |
+| Admin | `GET /admin/stats`, `GET /admin/users?search=&limit=&offset=`, `GET /admin/users/:id`, `DELETE /admin/users/:id` |
 
 Aggregation happens on the server. The dashboard is one request and the progress screen is one request, so the client never downloads every entry to add them up.
 

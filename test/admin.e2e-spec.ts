@@ -123,4 +123,27 @@ describe('Admin', () => {
     await admin('users/00000000-0000-4000-8000-000000000000').expect(404);
     await admin('users/not-a-uuid').expect(400);
   });
+
+  it('deletes a user with everything they own', async () => {
+    const victim = `e2e-admin-delete-${Date.now()}@sport-calorie.test`;
+    const registration = await request(app.getHttpServer())
+      .post('/api/auth/register')
+      .send({ email: victim, password: PASSWORD })
+      .expect(201);
+    const victimId = (registration.body as { user: { id: string } }).user.id;
+
+    await request(app.getHttpServer()).delete(`/api/admin/users/${victimId}`).expect(401);
+    await request(app.getHttpServer())
+      .delete(`/api/admin/users/${victimId}`)
+      .set('x-admin-key', ADMIN_KEY)
+      .expect(204);
+
+    expect(await prisma.user.findUnique({ where: { id: victimId } })).toBeNull();
+    expect(await prisma.refreshToken.count({ where: { userId: victimId } })).toBe(0);
+
+    await request(app.getHttpServer())
+      .delete(`/api/admin/users/${victimId}`)
+      .set('x-admin-key', ADMIN_KEY)
+      .expect(404);
+  });
 });

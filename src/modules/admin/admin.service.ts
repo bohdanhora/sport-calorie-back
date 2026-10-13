@@ -128,6 +128,19 @@ export class AdminService {
     };
   }
 
+  async deleteUser(id: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { id: true } });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.activityEntry.deleteMany({ where: { userId: id } }),
+      this.prisma.user.delete({ where: { id } }),
+    ]);
+  }
+
   async getUser(id: string): Promise<AdminUserDetail> {
     const user = await this.prisma.user.findUnique({
       where: { id },
