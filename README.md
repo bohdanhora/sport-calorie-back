@@ -144,7 +144,21 @@ Three properties make this safe to ship:
 - **Every result is cached as a `Food`.** The parsed portion is stored with `source: EXTERNAL` and the normalized query as `externalId`, so repeating a dish costs nothing and keeps working without the provider.
 - **The key never leaves the server.** It is encrypted with AES-256-GCM under `ENCRYPTION_KEY`, and the API only ever returns a mask such as `sk-...4f2a`.
 
-Only the dish descriptions and photographs the user submits are sent to the provider. No other diary content leaves the server.
+Estimation sends only the dish descriptions and photographs the user submits. The assistant below is the one place that sends diary content, and only when the user asks it a question.
+
+## Assistant
+
+`POST /api/assistant/ask` lets the user ask the same provider about a period of their own log - when they overate, what led to it, whether they get enough protein. The request carries the conversation, a period of up to 366 days (30 by default) and a `detail` of `auto` or `full`. The answer is markdown, with the provider's own count of the tokens sent and received when it reports one.
+
+The log goes out as compact text, one line per day and one per entry, built by `assistant-digest.ts`. In `auto`, `assistant-scope.ts` decides how much of it a question needs:
+
+- Every day's totals against its target, with macros, activity and weight, are always sent. They are cheap and answer most questions.
+- A period of up to 14 days, or a question asking for detail, gets the full food log.
+- A longer period gets the most frequent foods, the largest single entries, and the full log only for days more than 10% over target or with eating after 21:00.
+- The activity log is sent only for a short period or a question about training.
+- Only the last six messages of the conversation are sent.
+
+`full` skips the selection and sends every entry of the period, for a complete review of a month or a year. The log sits at the start of the request and does not change between follow-up questions, so providers that cache a repeated prefix charge less for them.
 
 ## Data model
 
@@ -340,6 +354,7 @@ Base path `/api`. Every route requires a Bearer token except registration, login
 | Calendar | `GET /calendar`, `POST /plans`, `PATCH /plans/:id`, `DELETE /plans/:id`, `POST /plans/:id/complete`, `POST /plans/:id/reopen` |
 | Weight | `GET /weight`, `PUT /weight/:date`, `DELETE /weight/:date` |
 | Aggregation | `GET /dashboard`, `GET /history`, `GET /progress` |
+| Assistant | `POST /assistant/ask` |
 | Health | `GET /health` |
 | Admin | `GET /admin/stats`, `GET /admin/users?search=&limit=&offset=`, `GET /admin/users/:id`, `DELETE /admin/users/:id` |
 

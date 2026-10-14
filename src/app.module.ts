@@ -16,6 +16,7 @@ import {
 import { validateEnvironment } from './config/environment';
 import { ActivitiesModule } from './modules/activities/activities.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { FoodEntriesModule } from './modules/food-entries/food-entries.module';
 import { FoodsModule } from './modules/foods/foods.module';
@@ -72,6 +73,7 @@ const GLOBAL_RATE_LIMIT = { ttl: 60_000, limit: 240 };
     WeightModule,
     WorkoutsModule,
     SummaryModule,
+    AssistantModule,
     AdminModule,
   ],
   providers: [
