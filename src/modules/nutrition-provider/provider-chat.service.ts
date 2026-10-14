@@ -31,8 +31,21 @@ export interface ChatMessage {
   content: MessageContent;
 }
 
+export interface ChatOptions {
+  json?: boolean;
+  temperature?: number;
+  timeoutMs?: number;
+}
+
+export interface ChatReply {
+  content: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+}
+
 interface ChatCompletionResponse {
   choices?: { message?: { content?: string }; finish_reason?: string }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
 }
 
 const RAN_OUT_OF_ROOM = 'length';
@@ -43,6 +56,8 @@ interface Attempt {
   maxTokens: number | null;
   model: string;
   timeoutMs: number;
+  json: boolean;
+  temperature: number;
   label: string;
 }
 
@@ -71,7 +86,17 @@ export class ProviderChatService {
     credentials: ProviderCredentials,
     messages: ChatMessage[],
     model?: string,
+    options: ChatOptions = {},
   ): Promise<string> {
+    return (await this.converse(credentials, messages, model, options)).content;
+  }
+
+  async converse(
+    credentials: ProviderCredentials,
+    messages: ChatMessage[],
+    model?: string,
+    options: ChatOptions = {},
+  ): Promise<ChatReply> {
     const modelName = model ?? credentials.modelName;
     const photo = hasImage(messages);
     let attempt: Attempt = {
@@ -79,7 +104,9 @@ export class ProviderChatService {
       dropped: [],
       maxTokens: null,
       model: modelName,
-      timeoutMs: photo ? IMAGE_TIMEOUT_MS : TEXT_TIMEOUT_MS,
+      timeoutMs: options.timeoutMs ?? (photo ? IMAGE_TIMEOUT_MS : TEXT_TIMEOUT_MS),
+      json: options.json ?? true,
+      temperature: options.temperature ?? 0,
       label: photo ? `${modelName} on a photo` : modelName,
     };
 
@@ -139,7 +166,7 @@ export class ProviderChatService {
     return this.send(credentials, attempt);
   }
 
-  private readContent(reply: ProviderReply, label: string): string {
+  private readContent(reply: ProviderReply, label: string): ChatReply {
     let payload: ChatCompletionResponse;
 
     try {
@@ -166,7 +193,11 @@ export class ProviderChatService {
       throw new BadGatewayException('The provider returned an empty answer');
     }
 
-    return content;
+    return {
+      content,
+      promptTokens: payload.usage?.prompt_tokens ?? null,
+      completionTokens: payload.usage?.completion_tokens ?? null,
+    };
   }
 
   private async send(credentials: ProviderCredentials, attempt: Attempt): Promise<ProviderReply> {
@@ -176,8 +207,8 @@ export class ProviderChatService {
       model: attempt.model,
       messages: attempt.messages,
       ...(attempt.maxTokens === null ? {} : { max_tokens: attempt.maxTokens }),
-      ...(attempt.dropped.includes('temperature') ? {} : { temperature: 0 }),
-      ...(attempt.dropped.includes('response_format')
+      ...(attempt.dropped.includes('temperature') ? {} : { temperature: attempt.temperature }),
+      ...(!attempt.json || attempt.dropped.includes('response_format')
         ? {}
         : { response_format: { type: 'json_object' } }),
     });
