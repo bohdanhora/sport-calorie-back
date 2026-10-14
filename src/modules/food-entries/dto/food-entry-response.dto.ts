@@ -40,4 +40,7 @@ export class FoodEntryDto {
 
   @ApiProperty({ example: '2026-03-02' })
   date!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'When the entry was written down' })
+  createdAt!: string;
 }

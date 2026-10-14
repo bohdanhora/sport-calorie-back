@@ -229,4 +229,5 @@ export const toFoodEntryDto = (entry: FoodEntry): FoodEntryDto => ({
   notes: entry.notes,
   consumedAt: entry.consumedAt.toISOString(),
   date: toLocalDateString(entry.localDate),
+  createdAt: entry.createdAt.toISOString(),
 });
