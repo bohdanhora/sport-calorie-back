@@ -1,9 +1,11 @@
 import { FoodUnit } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 import {
   UnusableProviderAnswerError,
   extractJsonObject,
   normaliseQuery,
+  scanDigest,
   parseNutritionPayload,
 } from './nutrition-payload';
 
@@ -133,5 +135,24 @@ describe('extractJsonObject', () => {
 describe('normaliseQuery', () => {
   it('makes equivalent queries share a cache entry', () => {
     expect(normaliseQuery('  Chicken   BREAST 200 g ')).toBe('chicken breast 200 g');
+  });
+});
+
+describe('scanDigest', () => {
+  const first = 'data:image/jpeg;base64,AAAA';
+  const second = 'data:image/jpeg;base64,BBBB';
+
+  it('keeps the key a single photo had before notes and several photos', () => {
+    expect(scanDigest([first])).toBe(createHash('sha256').update(first).digest('hex'));
+  });
+
+  it('tells a photo with a note apart from the same photo without one', () => {
+    expect(scanDigest([first], '300 g')).not.toBe(scanDigest([first]));
+    expect(scanDigest([first], '300 g')).not.toBe(scanDigest([first], '150 g'));
+  });
+
+  it('depends on every photo and their order', () => {
+    expect(scanDigest([first, second])).not.toBe(scanDigest([first]));
+    expect(scanDigest([first, second])).not.toBe(scanDigest([second, first]));
   });
 });

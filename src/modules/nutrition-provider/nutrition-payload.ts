@@ -1,4 +1,5 @@
 import { FoodUnit } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 import { round } from '../../domain';
 
@@ -138,3 +139,17 @@ export const parseNutritionPayload = (raw: string): ParsedNutrition => {
 
 export const normaliseQuery = (text: string): string =>
   text.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
+
+export const scanDigest = (images: string[], hint?: string): string => {
+  if (images.length === 1 && !hint) {
+    return createHash('sha256').update(images[0]).digest('hex');
+  }
+
+  const hash = createHash('sha256');
+
+  for (const image of images) {
+    hash.update(createHash('sha256').update(image).digest('hex'));
+  }
+
+  return hash.update(`|${hint ?? ''}`).digest('hex');
+};

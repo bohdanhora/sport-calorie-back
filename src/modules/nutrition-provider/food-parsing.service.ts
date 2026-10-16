@@ -1,5 +1,4 @@
 import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'node:crypto';
 import { FoodSource } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,6 +10,7 @@ import {
   UnusableProviderAnswerError,
   normaliseQuery,
   parseNutritionPayload,
+  scanDigest,
   type ParsedNutrition,
 } from './nutrition-payload';
 
@@ -131,7 +131,8 @@ export class FoodParsingService {
     }
 
     const language = LANGUAGE_NAMES[dto.locale ?? 'en'] ?? LANGUAGE_NAMES.en;
-    const digest = createHash('sha256').update(dto.image).digest('hex');
+    const hint = dto.hint?.trim() || undefined;
+    const digest = scanDigest([dto.image], hint);
 
     const cached = await this.prisma.food.findFirst({
       where: {
@@ -164,7 +165,7 @@ export class FoodParsingService {
         {
           role: 'user',
           content: [
-            ...(dto.hint ? [{ type: 'text' as const, text: dto.hint }] : []),
+            ...(hint ? [{ type: 'text' as const, text: hint }] : []),
             { type: 'image_url' as const, image_url: { url: dto.image } },
           ],
         },
