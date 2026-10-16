@@ -27,13 +27,17 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 const buildPhotoPrompt = (language: string): string =>
   [
-    'You estimate the nutrition of the food shown in a photograph.',
+    'You estimate the nutrition of the food shown in one or more photographs of a single meal.',
     'Answer with one JSON object and nothing else.',
     'Keys: name (string), amount (number greater than zero), unit (GRAM, MILLILITER, PIECE or SERVING),',
     'energyKcal (number), proteinG (number), carbsG (number), fatG (number).',
-    'All nutrition values describe the whole portion in the photograph, not 100 grams.',
-    'Judge the portion from what the photograph shows, using any everyday object in it for scale.',
-    'If several foods are on the plate, answer for the plate as a whole and name it accordingly.',
+    'All nutrition values describe the whole meal, not 100 grams.',
+    'Judge the portion from what the photographs show, using any everyday object in them for scale.',
+    'Several photographs may show the same food from different angles, or different parts of the meal;',
+    'count a food seen twice only once, and add up everything else.',
+    'If several foods are shown, answer for the meal as a whole and name it accordingly.',
+    'The user may add a note. Trust it over the photographs for anything it states,',
+    'such as the weight, the ingredients, or how much was actually eaten.',
     `Write the name in ${language}.`,
     'Never add commentary, units inside numbers, or extra keys.',
   ].join(' ');
@@ -130,9 +134,15 @@ export class FoodParsingService {
       throw new BadRequestException(`${model} is not known to accept images`);
     }
 
-    const language = LANGUAGE_NAMES[dto.locale ?? 'en'] ?? LANGUAGE_NAMES.en;
+    const images = dto.images ?? (dto.image ? [dto.image] : []);
+
+    if (images.length === 0) {
+      throw new BadRequestException('Send at least one photo');
+    }
+
     const hint = dto.hint?.trim() || undefined;
-    const digest = scanDigest([dto.image], hint);
+    const language = LANGUAGE_NAMES[dto.locale ?? 'en'] ?? LANGUAGE_NAMES.en;
+    const digest = scanDigest(images, hint);
 
     const cached = await this.prisma.food.findFirst({
       where: {
@@ -166,7 +176,7 @@ export class FoodParsingService {
           role: 'user',
           content: [
             ...(hint ? [{ type: 'text' as const, text: hint }] : []),
-            { type: 'image_url' as const, image_url: { url: dto.image } },
+            ...images.map((url) => ({ type: 'image_url' as const, image_url: { url } })),
           ],
         },
       ],
